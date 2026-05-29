@@ -1,4 +1,5 @@
 const { ActivityType } = require('discord.js');
+const { registerCommands } = require('../handlers/commandHandler');
 
 module.exports = {
   name: 'ready',
@@ -6,12 +7,10 @@ module.exports = {
   async execute(client) {
     console.log(`[BOT] Logged in as ${client.user.tag}`);
     console.log(`[BOT] Serving ${client.guilds.cache.size} server(s)`);
-    console.log(`[BOT] ${client.commands.size} commands loaded`);
 
     const activities = [
-      { name: 'Member Grow | !help', type: ActivityType.Watching },
+      { name: 'Member Grow | /help', type: ActivityType.Watching },
       { name: `${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)} members`, type: ActivityType.Watching },
-      { name: `${client.commands.size} commands | !help`, type: ActivityType.Listening },
       { name: 'Made by Stichachu13', type: ActivityType.Playing }
     ];
 
@@ -23,5 +22,7 @@ module.exports = {
     }
     rotate();
     setInterval(rotate, 30000);
+
+    await registerCommands(client);
   }
 };

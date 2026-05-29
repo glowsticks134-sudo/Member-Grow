@@ -5,6 +5,24 @@ const db = require('../utils/database');
 module.exports = {
   name: 'interactionCreate',
   async execute(client, interaction) {
+
+    if (interaction.isChatInputCommand()) {
+      const command = client.slashCommands.get(interaction.commandName);
+      if (!command) return;
+      try {
+        await command.execute(interaction, client);
+      } catch (err) {
+        console.error(`[CMD ERROR] /${interaction.commandName}:`, err);
+        const errMsg = { embeds: [errorEmbed('Something went wrong running that command.')], ephemeral: true };
+        if (interaction.deferred || interaction.replied) {
+          await interaction.followUp(errMsg).catch(() => null);
+        } else {
+          await interaction.reply(errMsg).catch(() => null);
+        }
+      }
+      return;
+    }
+
     if (!interaction.isButton()) return;
 
     const { customId, guild, member, user } = interaction;
@@ -16,7 +34,7 @@ module.exports = {
 
       const existing = guild.channels.cache.filter(c => c.topic === `ticket-${user.id}`);
       if (existing.size >= max) {
-        return interaction.reply({ embeds: [errorEmbed(`You already have an open ticket!`)], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You already have an open ticket!')], ephemeral: true });
       }
 
       let count = (await db.get(`ticket_count_${guild.id}`)) || 0;
@@ -46,7 +64,7 @@ module.exports = {
         .setColor(BRAND_COLOR)
         .setTitle('🎫 Ticket Opened')
         .setDescription(customMsg || `Hello ${user}! A staff member will assist you shortly.\n\nPlease describe your issue.`)
-        .addFields({ name: 'Close Ticket', value: 'Use `!closeticket` when resolved.' })
+        .addFields({ name: 'Close Ticket', value: 'Use `/tickets close` when resolved.' })
         .setFooter({ text: CREDITS })
         .setTimestamp();
 

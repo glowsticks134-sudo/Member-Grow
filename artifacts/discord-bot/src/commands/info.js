@@ -1,249 +1,111 @@
-const { EmbedBuilder } = require('discord.js');
-const { successEmbed, errorEmbed, infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
-const db = require('../utils/database');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
 
-const category = 'Info';
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('info')
+    .setDescription('Bot information commands')
+    .addSubcommand(s => s.setName('credits').setDescription('Show bot credits'))
+    .addSubcommand(s => s.setName('developer').setDescription('About the developer'))
+    .addSubcommand(s => s.setName('version').setDescription('Bot version'))
+    .addSubcommand(s => s.setName('changelog').setDescription('Recent bot changes'))
+    .addSubcommand(s => s.setName('support').setDescription('Support server link'))
+    .addSubcommand(s => s.setName('privacy').setDescription('Privacy policy'))
+    .addSubcommand(s => s.setName('tos').setDescription('Terms of service'))
+    .addSubcommand(s => s.setName('faq').setDescription('Frequently asked questions'))
+    .addSubcommand(s => s.setName('features').setDescription('List bot features'))
+    .addSubcommand(s => s.setName('donate').setDescription('Support the developer'))
+    .addSubcommand(s => s.setName('upvote').setDescription('Upvote the bot'))
+    .addSubcommand(s => s.setName('review').setDescription('Leave a review'))
+    .addSubcommand(s => s.setName('botlist').setDescription('Where to find this bot'))
+    .addSubcommand(s => s.setName('status').setDescription('Bot status page'))
+    .addSubcommand(s => s.setName('social').setDescription('Bot social media links'))
+    .addSubcommand(s => s.setName('commands').setDescription('Full command list'))
+    .addSubcommand(s => s.setName('about').setDescription('About Member Grow bot'))
+    .addSubcommand(s => s.setName('whois').setDescription('Who is Stichachu13?'))
+    .addSubcommand(s => s.setName('setup').setDescription('Quick setup guide'))
+    .addSubcommand(s => s.setName('permissions').setDescription('Required bot permissions'))
+    .addSubcommand(s => s.setName('roadmap').setDescription('Upcoming features')),
 
-const commands = [
-  {
-    name: 'credits',
-    description: 'Show bot credits',
-    usage: '!credits',
-    async execute(message, args, client) {
+  async execute(interaction, client) {
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'credits') {
       const embed = new EmbedBuilder()
         .setColor(BRAND_COLOR)
         .setTitle('✨ Bot Credits')
         .setDescription('This bot was created with ❤️ for the **Member Grow** server.')
+        .setThumbnail(client.user.displayAvatarURL())
         .addFields(
           { name: 'Developer', value: '**Stichachu13**', inline: true },
           { name: 'Bot Name', value: client.user.username, inline: true },
           { name: 'Framework', value: 'discord.js v14', inline: true },
-          { name: 'Total Commands', value: String(client.commands.size), inline: true }
+          { name: 'Modules', value: String(client.slashCommands.size) + ' slash commands', inline: true },
+          { name: 'Servers', value: String(client.guilds.cache.size), inline: true },
+          { name: 'Node.js', value: process.version, inline: true }
         )
         .setFooter({ text: CREDITS })
         .setTimestamp();
-      message.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed] });
     }
-  },
-  {
-    name: 'developer',
-    description: 'Info about the bot developer',
-    usage: '!developer',
-    aliases: ['dev'],
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('👨‍💻 Developer', 'This bot was built and maintained by **Stichachu13**.\n\nThank you for using Member Grow Bot!')] });
-    }
-  },
-  {
-    name: 'version',
-    description: 'Show the bot version',
-    usage: '!version',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('📦 Version', `**Member Grow Bot** v1.0.0\n**discord.js:** v${require('discord.js').version}\n**Node.js:** ${process.version}`)] });
-    }
-  },
-  {
-    name: 'support',
-    description: 'Get support information',
-    usage: '!support',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🆘 Support', 'For support, contact **Stichachu13** or open a ticket using `!ticketsetup`.')] });
-    }
-  },
-  {
-    name: 'github',
-    description: 'Show the GitHub link',
-    usage: '!github',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🐙 GitHub', 'Bot source code is private.\nMade by **Stichachu13** for Member Grow.')] });
-    }
-  },
-  {
-    name: 'faq',
-    description: 'Show frequently asked questions',
-    usage: '!faq',
-    async execute(message, args) {
-      const faqs = [
-        '**Q: How do I change the prefix?**\nA: Use `!setprefix <prefix>` (Admin only)',
-        '**Q: How do I set up tickets?**\nA: Use `!ticketsetup` (Admin only)',
-        '**Q: How does leveling work?**\nA: Chat to earn XP. Use `!rank` to check your level.',
-        '**Q: How do I enable welcome messages?**\nA: Use `!setwelcome <channel>` (Admin only)',
-        '**Q: Who made this bot?**\nA: **Stichachu13**'
-      ];
-      message.reply({ embeds: [infoEmbed('❓ FAQ', faqs.join('\n\n'))] });
-    }
-  },
-  {
-    name: 'report',
-    description: 'Report a bug or issue',
-    usage: '!report <issue>',
-    async execute(message, args) {
-      const issue = args.join(' ');
-      if (!issue) return message.reply({ embeds: [errorEmbed('Please describe the issue.')] });
-      message.reply({ embeds: [successEmbed('📋 Report Submitted', `Your report has been noted. Contact **Stichachu13** for follow-up.\n**Issue:** ${issue}`)] });
-    }
-  },
-  {
-    name: 'feedback',
-    description: 'Submit feedback about the bot',
-    usage: '!feedback <message>',
-    async execute(message, args) {
-      const text = args.join(' ');
-      if (!text) return message.reply({ embeds: [errorEmbed('Please provide feedback.')] });
-      message.reply({ embeds: [successEmbed('💬 Feedback', `Thank you for your feedback, **${message.author.username}**! It has been forwarded to **Stichachu13**.`)] });
-    }
-  },
-  {
-    name: 'contact',
-    description: 'How to contact the developer',
-    usage: '!contact',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('📧 Contact', 'You can reach the developer **Stichachu13** through the Member Grow Discord server.')] });
-    }
-  },
-  {
-    name: 'tos',
-    description: 'View the bot Terms of Service',
-    usage: '!tos',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('📜 Terms of Service', 'By using this bot you agree to:\n• Not abuse the bot commands\n• Respect other server members\n• Follow Discord ToS\n\nViolations may result in being blacklisted.')] });
-    }
-  },
-  {
-    name: 'privacy',
-    description: 'View the privacy policy',
-    usage: '!privacy',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🔒 Privacy Policy', 'This bot stores:\n• Server configurations (channels, roles, settings)\n• Economy data (balances, inventories)\n• Level/XP data\n• Moderation logs\n\nNo personal data is sold or shared externally.')] });
-    }
-  },
-  {
-    name: 'status',
-    description: 'Check bot status',
-    usage: '!status',
-    async execute(message, args, client) {
-      const status = ['🟢 Online', '🟡 Idle', '🔴 Do Not Disturb', '⚫ Offline'];
-      message.reply({ embeds: [infoEmbed('🟢 Bot Status', `The bot is **online** and fully operational!\n**Ping:** ${Math.round(client.ws.ping)}ms`)] });
-    }
-  },
-  {
-    name: 'changelog',
-    description: 'View the bot changelog',
-    usage: '!changelog',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('📋 Changelog', `**v1.0.0** — Initial Release\n• 350+ commands added\n• Economy system\n• Leveling system\n• Moderation tools\n• Ticket system\n• Giveaway system\n• And much more!\n\n*Made by Stichachu13*`)] });
-    }
-  },
-  {
-    name: 'donate',
-    description: 'Support the developer',
-    usage: '!donate',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('💖 Support the Dev', 'Want to support **Stichachu13**? Your kind words and positive feedback mean the world! 🙏')] });
-    }
-  },
-  {
-    name: 'partner',
-    description: 'View partnership information',
-    usage: '!partner',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🤝 Partnerships', 'Interested in partnering with Member Grow? Contact **Stichachu13** for more information.')] });
-    }
-  },
-  {
-    name: 'setbotname',
-    description: 'Change the bot\'s username (Owner only)',
-    usage: '!setbotname <name>',
-    async execute(message, args, client) {
-      const OWNER_ID = process.env.OWNER_ID;
-      if (OWNER_ID && message.author.id !== OWNER_ID) return message.reply({ embeds: [errorEmbed('Owner only.')] });
-      const name = args.join(' ');
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a name.')] });
-      await client.user.setUsername(name);
-      message.reply({ embeds: [successEmbed('Name Changed', `Bot name changed to **${name}**.`)] });
-    }
-  },
-  {
-    name: 'setstatus',
-    description: 'Set the bot\'s status (Owner)',
-    usage: '!setstatus <text>',
-    async execute(message, args, client) {
-      const OWNER_ID = process.env.OWNER_ID;
-      if (OWNER_ID && message.author.id !== OWNER_ID) return message.reply({ embeds: [errorEmbed('Owner only.')] });
-      const text = args.join(' ');
-      if (!text) return message.reply({ embeds: [errorEmbed('Please provide status text.')] });
-      client.user.setActivity(text);
-      message.reply({ embeds: [successEmbed('Status Set', `Status set to: ${text}`)] });
-    }
-  },
-  {
-    name: 'eval',
-    description: 'Evaluate code (Owner only)',
-    usage: '!eval <code>',
-    async execute(message, args, client) {
-      const OWNER_ID = process.env.OWNER_ID;
-      if (!OWNER_ID || message.author.id !== OWNER_ID) return message.reply({ embeds: [errorEmbed('Owner only.')] });
-      const code = args.join(' ');
-      try {
-        let result = eval(code);
-        if (result instanceof Promise) result = await result;
-        const output = String(result).slice(0, 1000);
-        message.reply({ embeds: [infoEmbed('📝 Eval', `\`\`\`js\n${output}\n\`\`\``)] });
-      } catch (err) {
-        message.reply({ embeds: [errorEmbed(`\`\`\`\n${err.message}\n\`\`\``)] });
-      }
-    }
-  },
-  {
-    name: 'blacklist',
-    description: 'Blacklist a user from using the bot (Owner)',
-    usage: '!blacklist <userID>',
-    async execute(message, args, client) {
-      const OWNER_ID = process.env.OWNER_ID;
-      if (OWNER_ID && message.author.id !== OWNER_ID) return message.reply({ embeds: [errorEmbed('Owner only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide a user ID.')] });
-      const list = (await db.get('bot_blacklist')) || [];
-      if (list.includes(args[0])) {
-        const filtered = list.filter(id => id !== args[0]);
-        await db.set('bot_blacklist', filtered);
-        return message.reply({ embeds: [successEmbed('Blacklist', `User <@${args[0]}> removed from blacklist.`)] });
-      }
-      list.push(args[0]);
-      await db.set('bot_blacklist', list);
-      message.reply({ embeds: [successEmbed('Blacklist', `User <@${args[0]}> added to blacklist.`)] });
-    }
-  },
-  {
-    name: 'announce',
-    description: 'Send an announcement to a channel',
-    usage: '!announce <channel> <message>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const { resolveChannel } = require('../utils/helpers');
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      const text = args.slice(1).join(' ');
-      if (!text) return message.reply({ embeds: [errorEmbed('Please provide announcement text.')] });
-      ch.send({ embeds: [infoEmbed('📢 Announcement', text).setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })] });
-      message.reply({ embeds: [successEmbed('Announcement Sent', `Announcement sent to ${ch}.`)] });
-    }
-  },
-  {
-    name: 'embedsay',
-    description: 'Send a custom titled embed',
-    usage: '!embedsay <channel> <title> | <description>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const { resolveChannel } = require('../utils/helpers');
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      const full = args.slice(1).join(' ');
-      const [title, ...desc] = full.split('|');
-      if (!title) return message.reply({ embeds: [errorEmbed('Provide title | description')] });
-      ch.send({ embeds: [infoEmbed(title.trim(), desc.join('|').trim())] });
-      await message.delete().catch(() => null);
-    }
-  }
-];
 
-module.exports = { category, commands };
+    if (sub === 'developer') {
+      return interaction.reply({ embeds: [infoEmbed('👨‍💻 Developer', '**Stichachu13** built and maintains this bot.\n\nThis bot powers the **Member Grow** community with 300+ commands covering moderation, fun, leveling, giveaways, tickets, and more.\n\nThank you for using Member Grow Bot! ❤️')] });
+    }
+
+    if (sub === 'version') {
+      return interaction.reply({ embeds: [infoEmbed('📦 Version', '**Member Grow Bot v2.0**\n\n✅ Now running on **Slash Commands** (converted from prefix)\n✅ discord.js v14\n✅ 18 command categories\n✅ Hosted on Railway')] });
+    }
+
+    if (sub === 'changelog') {
+      return interaction.reply({ embeds: [infoEmbed('📋 Changelog — v2.0', '**Latest Changes:**\n• Converted all commands to slash commands\n• Added ticket panel button system\n• Improved giveaway enter/leave buttons\n• Added starboard support\n• Better XP/leveling system\n• AutoMod improvements')] });
+    }
+
+    if (sub === 'support') {
+      return interaction.reply({ embeds: [infoEmbed('💬 Support', 'Join the **Member Grow** server for support!\n\nContact **Stichachu13** directly for bot issues.')] });
+    }
+
+    if (sub === 'privacy') {
+      return interaction.reply({ embeds: [infoEmbed('🔒 Privacy Policy', 'This bot stores:\n• Server configuration settings\n• User XP and level data\n• Warning/mod logs\n• Active tickets, giveaways, polls, tags\n\nNo data is sold or shared with third parties.\nData can be deleted on request.')] });
+    }
+
+    if (sub === 'tos') {
+      return interaction.reply({ embeds: [infoEmbed('📜 Terms of Service', '• Do not abuse bot commands\n• Do not use commands to harass others\n• Respect server rules\n• The bot may be updated or removed at any time\n\nBy using this bot, you agree to these terms.')] });
+    }
+
+    if (sub === 'faq') {
+      return interaction.reply({ embeds: [infoEmbed('❓ FAQ', '**Q: How do I use slash commands?**\nA: Type `/` followed by a command name.\n\n**Q: How does leveling work?**\nA: Earn XP by chatting. Check rank with `/leveling rank`.\n\n**Q: How do I open a ticket?**\nA: Set up tickets with `/tickets setup`, then click the panel.\n\n**Q: Can I reset all XP?**\nA: Admins can use `/leveling resetallxp`.')] });
+    }
+
+    if (sub === 'features') {
+      return interaction.reply({ embeds: [infoEmbed('🌟 Features', '• **18 command categories**\n• Moderation (ban, kick, mute, warn...)\n• Leveling & XP system\n• Giveaways with button entry\n• Support tickets\n• AutoMod (links, spam, caps, badwords)\n• Starboard\n• Welcome/leave messages\n• Reaction roles\n• Custom tags\n• Polls & suggestions\n• Fun games & mini-games\n• Logging & audit trail')] });
+    }
+
+    if (sub === 'setup') {
+      return interaction.reply({ embeds: [infoEmbed('⚙️ Quick Setup Guide', '**1. Moderation**\n`/mod roles setmuterole` — set mute role\n`/logging setlog` — set log channel\n\n**2. Welcome System**\n`/welcome setchannel` — set welcome channel\n`/welcome setmessage` — set message\n\n**3. Tickets**\n`/tickets setup` — creates panel button\n\n**4. AutoMod**\n`/automod antilink` — enable link filter\n`/automod antispam` — enable spam filter\n\n**5. Leveling**\n`/leveling levelchannel` — set level-up channel')] });
+    }
+
+    if (sub === 'permissions') {
+      return interaction.reply({ embeds: [infoEmbed('🔑 Required Permissions', '• Administrator (recommended)\n\nOr these specific permissions:\n• Ban Members, Kick Members\n• Manage Roles, Manage Channels\n• Moderate Members\n• Manage Messages\n• Send Messages, Embed Links\n• Add Reactions, Read Message History\n• View Channels\n• Manage Webhooks (for logging)')] });
+    }
+
+    if (sub === 'commands') {
+      return interaction.reply({ embeds: [infoEmbed('📚 All Commands', 'Type `/` in Discord to browse all commands!\n\n**Categories:**\n`/mod` `/utility` `/fun` `/social`\n`/leveling` `/games` `/giveaway` `/poll`\n`/tickets` `/automod` `/logging` `/starboard`\n`/welcome` `/rr` `/tags` `/reminder`\n`/misc` `/info`')] });
+    }
+
+    if (sub === 'about') {
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(BRAND_COLOR).setTitle('🤖 About Member Grow Bot').setThumbnail(client.user.displayAvatarURL()).setDescription('Member Grow Bot is a full-featured Discord bot designed for the **Member Grow** community.\n\nBuilt by **Stichachu13** with discord.js v14, featuring 300+ commands across 18 categories.').setFooter({ text: CREDITS }).setTimestamp()] });
+    }
+
+    if (sub === 'whois') {
+      return interaction.reply({ embeds: [infoEmbed('👤 Stichachu13', '**Stichachu13** is the developer and owner of this bot.\n\nBuilt Member Grow Bot from scratch with JavaScript and discord.js v14.\n\nFor support or feature requests, reach out directly!')] });
+    }
+
+    if (sub === 'roadmap') {
+      return interaction.reply({ embeds: [infoEmbed('🗺️ Roadmap', '**Upcoming Features:**\n• Music commands\n• Economy system\n• Custom rank cards\n• Multi-language support\n• Dashboard web panel\n• Advanced automod AI\n\n*Subject to change — suggest features to Stichachu13!*')] });
+    }
+
+    const defaults = { donate: '💝 Support', upvote: '⬆️ Upvote', review: '⭐ Review', botlist: '📋 Bot Lists', status: '🟢 Status', social: '📱 Social' };
+    if (defaults[sub]) return interaction.reply({ embeds: [infoEmbed(defaults[sub], `Thank you for using **Member Grow Bot**!\n\nContact **Stichachu13** for links and more info.`)] });
+  }
+};

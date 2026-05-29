@@ -1,9 +1,7 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { successEmbed, errorEmbed, infoEmbed, warnEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
-const { parseDuration, formatDuration, resolveChannel } = require('../utils/helpers');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { successEmbed, errorEmbed, infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
+const { parseDuration, formatDuration } = require('../utils/helpers');
 const db = require('../utils/database');
-
-const category = 'Giveaways';
 
 async function endGiveaway(client, giveaway) {
   const guild = client.guilds.cache.get(giveaway.guildId);
@@ -12,30 +10,18 @@ async function endGiveaway(client, giveaway) {
   if (!ch) return;
   const msg = await ch.messages.fetch(giveaway.messageId).catch(() => null);
   if (!msg) return;
-
   const entries = giveaway.entries || [];
   if (!entries.length) {
-    const embed = new EmbedBuilder()
-      .setColor(0xED4245)
-      .setTitle('🎉 Giveaway Ended')
-      .setDescription(`**${giveaway.prize}**\nNo valid entries. No winner.`)
-      .setFooter({ text: CREDITS });
+    const embed = new EmbedBuilder().setColor(0xED4245).setTitle('🎉 Giveaway Ended').setDescription(`**${giveaway.prize}**\nNo valid entries. No winner.`).setFooter({ text: CREDITS });
     return msg.edit({ embeds: [embed], components: [] });
   }
-
   const winners = [];
   const pool = [...entries];
   for (let i = 0; i < Math.min(giveaway.winners, pool.length); i++) {
     const idx = Math.floor(Math.random() * pool.length);
     winners.push(pool.splice(idx, 1)[0]);
   }
-
-  const embed = new EmbedBuilder()
-    .setColor(0xFEE75C)
-    .setTitle('🎉 Giveaway Ended!')
-    .setDescription(`**Prize:** ${giveaway.prize}\n**Winner(s):** ${winners.map(id => `<@${id}>`).join(', ')}\n**Entries:** ${entries.length}`)
-    .setFooter({ text: CREDITS })
-    .setTimestamp();
+  const embed = new EmbedBuilder().setColor(0xFEE75C).setTitle('🎉 Giveaway Ended!').setDescription(`**Prize:** ${giveaway.prize}\n**Winner(s):** ${winners.map(id => `<@${id}>`).join(', ')}\n**Entries:** ${entries.length}`).setFooter({ text: CREDITS }).setTimestamp();
   msg.edit({ embeds: [embed], components: [] });
   ch.send({ content: `🎉 Congratulations ${winners.map(id => `<@${id}>`).join(', ')}! You won **${giveaway.prize}**!` });
   giveaway.ended = true;
@@ -43,175 +29,140 @@ async function endGiveaway(client, giveaway) {
   await db.set(`giveaway_${giveaway.id}`, giveaway);
 }
 
-const commands = [
-  {
-    name: 'gcreate',
-    description: 'Create a giveaway',
-    usage: '!gcreate <duration> <winners> <prize>',
-    aliases: ['gstart', 'giveaway'],
-    async execute(message, args, client) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const duration = parseDuration(args[0]);
-      if (!duration) return message.reply({ embeds: [errorEmbed('Invalid duration. Ex: `1h`, `30m`, `1d`')] });
-      const winners = parseInt(args[1]);
-      if (isNaN(winners) || winners < 1) return message.reply({ embeds: [errorEmbed('Invalid winner count.')] });
-      const prize = args.slice(2).join(' ');
-      if (!prize) return message.reply({ embeds: [errorEmbed('Please provide a prize.')] });
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('giveaway')
+    .setDescription('Giveaway commands')
+    .addSubcommand(s => s.setName('create').setDescription('Create a giveaway').addStringOption(o => o.setName('duration').setDescription('Duration e.g. 1h, 30m').setRequired(true)).addIntegerOption(o => o.setName('winners').setDescription('Number of winners').setRequired(true).setMinValue(1).setMaxValue(20)).addStringOption(o => o.setName('prize').setDescription('Prize').setRequired(true)).addChannelOption(o => o.setName('channel').setDescription('Channel (default: current)')))
+    .addSubcommand(s => s.setName('end').setDescription('End a giveaway early').addStringOption(o => o.setName('messageid').setDescription('Giveaway message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('reroll').setDescription('Reroll giveaway winners').addStringOption(o => o.setName('messageid').setDescription('Giveaway message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('list').setDescription('List active giveaways'))
+    .addSubcommand(s => s.setName('pause').setDescription('Pause a giveaway').addStringOption(o => o.setName('messageid').setDescription('Giveaway message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('resume').setDescription('Resume a paused giveaway').addStringOption(o => o.setName('messageid').setDescription('Giveaway message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('delete').setDescription('Delete a giveaway').addStringOption(o => o.setName('messageid').setDescription('Giveaway message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('blacklist').setDescription('Blacklist a user from giveaways').addUserOption(o => o.setName('user').setDescription('User').setRequired(true)))
+    .addSubcommand(s => s.setName('requirerole').setDescription('Require a role to enter giveaways').addRoleOption(o => o.setName('role').setDescription('Required role').setRequired(true)))
+    .addSubcommand(s => s.setName('clearrequirement').setDescription('Clear giveaway role requirement')),
 
-      const endsAt = Date.now() + duration;
+  async execute(interaction, client) {
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
+
+    if (sub === 'create') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const durationStr = interaction.options.getString('duration');
+      const winners = interaction.options.getInteger('winners');
+      const prize = interaction.options.getString('prize');
+      const ch = interaction.options.getChannel('channel') || interaction.channel;
+      const duration = parseDuration(durationStr);
+      if (!duration) return interaction.reply({ embeds: [errorEmbed('Invalid duration. Use e.g. `1h`, `30m`, `2d`.')], ephemeral: true });
+      const endTime = Date.now() + duration;
       const embed = new EmbedBuilder()
-        .setColor(BRAND_COLOR)
-        .setTitle('🎉 GIVEAWAY!')
-        .setDescription(`**Prize:** ${prize}\n**Winners:** ${winners}\n**Ends:** <t:${Math.floor(endsAt / 1000)}:R>\n**Hosted by:** ${message.author}`)
-        .addFields({ name: 'Entries', value: '0', inline: true })
-        .setFooter({ text: CREDITS })
-        .setTimestamp(endsAt);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('giveaway_enter').setLabel('🎉 Enter').setStyle(ButtonStyle.Success)
-      );
-
-      await message.delete().catch(() => null);
-      const msg = await message.channel.send({ embeds: [embed], components: [row] });
-
-      const id = `${message.guild.id}_${msg.id}`;
-      const giveaway = { id, guildId: message.guild.id, channelId: message.channel.id, messageId: msg.id, prize, winners, endsAt, entries: [], hostId: message.author.id, ended: false };
-      await db.set(`giveaway_${id}`, giveaway);
-
-      setTimeout(() => endGiveaway(client, giveaway), duration);
+        .setColor(BRAND_COLOR).setTitle('🎉 Giveaway!').setDescription(`**${prize}**\n\nClick the button to enter!\n\nWinners: **${winners}**\nEnds: <t:${Math.floor(endTime / 1000)}:R>`)
+        .addFields({ name: 'Entries', value: '0', inline: true }, { name: 'Hosted by', value: interaction.user.tag, inline: true })
+        .setFooter({ text: CREDITS }).setTimestamp(endTime);
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway_enter').setLabel('🎉 Enter').setStyle(ButtonStyle.Success));
+      const msg = await ch.send({ embeds: [embed], components: [row] });
+      const id = `${guildId}_${msg.id}`;
+      const giveawayData = { id, guildId, channelId: ch.id, messageId: msg.id, prize, winners, entries: [], endTime, ended: false, hostedBy: interaction.user.id };
+      await db.set(`giveaway_${id}`, giveawayData);
+      setTimeout(() => endGiveaway(client, giveawayData), duration);
+      return interaction.reply({ embeds: [successEmbed('Giveaway Created', `Giveaway for **${prize}** started in ${ch}!`)], ephemeral: true });
     }
-  },
-  {
-    name: 'gend',
-    description: 'End a giveaway early',
-    usage: '!gend <messageID>',
-    async execute(message, args, client) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide the giveaway message ID.')] });
-      const id = `${message.guild.id}_${args[0]}`;
+
+    if (sub === 'end') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const msgId = interaction.options.getString('messageid');
+      const id = `${guildId}_${msgId}`;
       const giveaway = await db.get(`giveaway_${id}`);
-      if (!giveaway) return message.reply({ embeds: [errorEmbed('Giveaway not found.')] });
-      if (giveaway.ended) return message.reply({ embeds: [warnEmbed('Already Ended', 'This giveaway has already ended.')] });
+      if (!giveaway) return interaction.reply({ embeds: [errorEmbed('Giveaway not found.')], ephemeral: true });
       await endGiveaway(client, giveaway);
-      message.reply({ embeds: [successEmbed('Giveaway Ended', 'The giveaway has been ended early.')] });
+      return interaction.reply({ embeds: [successEmbed('Giveaway Ended', 'The giveaway has been ended early.')], ephemeral: true });
     }
-  },
-  {
-    name: 'greroll',
-    description: 'Reroll a giveaway winner',
-    usage: '!greroll <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide the giveaway message ID.')] });
-      const id = `${message.guild.id}_${args[0]}`;
+
+    if (sub === 'reroll') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const msgId = interaction.options.getString('messageid');
+      const id = `${guildId}_${msgId}`;
       const giveaway = await db.get(`giveaway_${id}`);
-      if (!giveaway || !giveaway.ended) return message.reply({ embeds: [errorEmbed('Giveaway not found or not ended.')] });
-      const entries = giveaway.entries || [];
-      if (!entries.length) return message.reply({ embeds: [errorEmbed('No entries to reroll.')] });
-      const winner = entries[Math.floor(Math.random() * entries.length)];
-      message.reply({ embeds: [successEmbed('🎉 Rerolled!', `New winner: <@${winner}>! Congratulations!`)] });
+      if (!giveaway || !giveaway.entries?.length) return interaction.reply({ embeds: [errorEmbed('Giveaway not found or no entries.')], ephemeral: true });
+      const winner = giveaway.entries[Math.floor(Math.random() * giveaway.entries.length)];
+      await interaction.channel.send({ content: `🎉 Reroll winner: <@${winner}>! Congrats on winning **${giveaway.prize}**!` });
+      return interaction.reply({ embeds: [successEmbed('Rerolled', `New winner: <@${winner}>`)], ephemeral: true });
     }
-  },
-  {
-    name: 'gdelete',
-    description: 'Delete a giveaway',
-    usage: '!gdelete <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide the giveaway message ID.')] });
-      const id = `${message.guild.id}_${args[0]}`;
+
+    if (sub === 'list') {
+      const allKeys = await db.all();
+      const active = allKeys.filter(k => k.id.startsWith(`giveaway_${guildId}_`) && !k.value.ended);
+      if (!active.length) return interaction.reply({ embeds: [infoEmbed('Giveaways', 'No active giveaways.')] });
+      const list = active.slice(0, 10).map(k => `**${k.value.prize}** — ends <t:${Math.floor(k.value.endTime / 1000)}:R> — ${k.value.entries.length} entries`).join('\n');
+      return interaction.reply({ embeds: [infoEmbed('🎉 Active Giveaways', list)] });
+    }
+
+    if (sub === 'pause') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const msgId = interaction.options.getString('messageid');
+      const id = `${guildId}_${msgId}`;
       const giveaway = await db.get(`giveaway_${id}`);
-      if (!giveaway) return message.reply({ embeds: [errorEmbed('Giveaway not found.')] });
-      const ch = message.guild.channels.cache.get(giveaway.channelId);
-      if (ch) {
-        const msg = await ch.messages.fetch(giveaway.messageId).catch(() => null);
-        if (msg) await msg.delete().catch(() => null);
-      }
-      await db.delete(`giveaway_${id}`);
-      message.reply({ embeds: [successEmbed('Giveaway Deleted', 'The giveaway has been deleted.')] });
-    }
-  },
-  {
-    name: 'glist',
-    description: 'List all active giveaways',
-    usage: '!glist',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🎉 Active Giveaways', 'Use `!gcreate` to start a giveaway.')] });
-    }
-  },
-  {
-    name: 'gpause',
-    description: 'Pause a giveaway',
-    usage: '!gpause <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide the giveaway message ID.')] });
-      const id = `${message.guild.id}_${args[0]}`;
-      const giveaway = await db.get(`giveaway_${id}`);
-      if (!giveaway) return message.reply({ embeds: [errorEmbed('Giveaway not found.')] });
+      if (!giveaway) return interaction.reply({ embeds: [errorEmbed('Giveaway not found.')], ephemeral: true });
       giveaway.paused = true;
       await db.set(`giveaway_${id}`, giveaway);
-      message.reply({ embeds: [successEmbed('Giveaway Paused', 'Entries are paused.')] });
+      return interaction.reply({ embeds: [successEmbed('Giveaway Paused', 'The giveaway has been paused.')] });
     }
-  },
-  {
-    name: 'gresume',
-    description: 'Resume a paused giveaway',
-    usage: '!gresume <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide the giveaway message ID.')] });
-      const id = `${message.guild.id}_${args[0]}`;
+
+    if (sub === 'resume') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const msgId = interaction.options.getString('messageid');
+      const id = `${guildId}_${msgId}`;
       const giveaway = await db.get(`giveaway_${id}`);
-      if (!giveaway) return message.reply({ embeds: [errorEmbed('Giveaway not found.')] });
+      if (!giveaway) return interaction.reply({ embeds: [errorEmbed('Giveaway not found.')], ephemeral: true });
       giveaway.paused = false;
       await db.set(`giveaway_${id}`, giveaway);
-      message.reply({ embeds: [successEmbed('Giveaway Resumed', 'Entries are now open again.')] });
+      return interaction.reply({ embeds: [successEmbed('Giveaway Resumed', 'The giveaway has been resumed.')] });
     }
-  },
-  {
-    name: 'gblacklist',
-    description: 'Blacklist a user from entering giveaways',
-    usage: '!gblacklist <user>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const target = message.mentions.users.first();
-      if (!target) return message.reply({ embeds: [errorEmbed('Please mention a user.')] });
-      const list = (await db.get(`gblacklist_${message.guild.id}`)) || [];
-      if (list.includes(target.id)) {
-        const idx = list.indexOf(target.id);
-        list.splice(idx, 1);
-        await db.set(`gblacklist_${message.guild.id}`, list);
-        return message.reply({ embeds: [successEmbed('Giveaway Blacklist', `${target.tag} removed from blacklist.`)] });
+
+    if (sub === 'delete') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const msgId = interaction.options.getString('messageid');
+      const id = `${guildId}_${msgId}`;
+      await db.delete(`giveaway_${id}`);
+      return interaction.reply({ embeds: [successEmbed('Giveaway Deleted', 'Giveaway data deleted.')] });
+    }
+
+    if (sub === 'blacklist') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const user = interaction.options.getUser('user');
+      const list = (await db.get(`gblacklist_${guildId}`)) || [];
+      if (list.includes(user.id)) {
+        list.splice(list.indexOf(user.id), 1);
+        await db.set(`gblacklist_${guildId}`, list);
+        return interaction.reply({ embeds: [successEmbed('Blacklist Removed', `${user.tag} removed from giveaway blacklist.`)] });
       }
-      list.push(target.id);
-      await db.set(`gblacklist_${message.guild.id}`, list);
-      message.reply({ embeds: [successEmbed('Giveaway Blacklist', `${target.tag} added to blacklist.`)] });
+      list.push(user.id);
+      await db.set(`gblacklist_${guildId}`, list);
+      return interaction.reply({ embeds: [successEmbed('Blacklisted', `${user.tag} added to giveaway blacklist.`)] });
     }
-  },
-  {
-    name: 'grequirement',
-    description: 'Set a role requirement for giveaways',
-    usage: '!grequirement <role>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const { resolveRole: rr } = require('../utils/helpers');
-      const role = await rr(message.guild, args[0]);
-      if (!role) return message.reply({ embeds: [errorEmbed('Could not find that role.')] });
-      await db.set(`giveaway_req_${message.guild.id}`, role.id);
-      message.reply({ embeds: [successEmbed('Giveaway Requirement', `Users must have ${role} to enter giveaways.`)] });
+
+    if (sub === 'requirerole') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      const role = interaction.options.getRole('role');
+      await db.set(`giveaway_req_${guildId}`, role.id);
+      return interaction.reply({ embeds: [successEmbed('Role Requirement', `${role} is now required to enter giveaways.`)] });
     }
-  },
-  {
-    name: 'gclearrequirement',
-    description: 'Remove giveaway role requirement',
-    usage: '!gclearrequirement',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      await db.delete(`giveaway_req_${message.guild.id}`);
-      message.reply({ embeds: [successEmbed('Requirement Cleared', 'Giveaway role requirement removed.')] });
+
+    if (sub === 'clearrequirement') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild))
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permission.')], ephemeral: true });
+      await db.delete(`giveaway_req_${guildId}`);
+      return interaction.reply({ embeds: [successEmbed('Requirement Cleared', 'Giveaway role requirement removed.')] });
     }
   }
-];
-
-module.exports = { category, commands };
+};

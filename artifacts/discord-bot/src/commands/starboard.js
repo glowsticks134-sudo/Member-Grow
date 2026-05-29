@@ -1,128 +1,80 @@
-const { EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { successEmbed, errorEmbed, infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
-const { resolveChannel } = require('../utils/helpers');
 const db = require('../utils/database');
 
-const category = 'Starboard';
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('starboard')
+    .setDescription('Starboard configuration')
+    .addSubcommand(s => s.setName('setup').setDescription('Set up the starboard').addChannelOption(o => o.setName('channel').setDescription('Starboard channel').setRequired(true)).addIntegerOption(o => o.setName('threshold').setDescription('Stars needed (default: 3)').setMinValue(1)))
+    .addSubcommand(s => s.setName('disable').setDescription('Disable the starboard'))
+    .addSubcommand(s => s.setName('settings').setDescription('View starboard settings'))
+    .addSubcommand(s => s.setName('setthreshold').setDescription('Change star threshold').addIntegerOption(o => o.setName('amount').setDescription('Stars needed').setRequired(true).setMinValue(1)))
+    .addSubcommand(s => s.setName('setemoji').setDescription('Change the star emoji').addStringOption(o => o.setName('emoji').setDescription('Emoji').setRequired(true)))
+    .addSubcommand(s => s.setName('ignore').setDescription('Toggle ignore a channel').addChannelOption(o => o.setName('channel').setDescription('Channel').setRequired(true)))
+    .addSubcommand(s => s.setName('top').setDescription('Top starred messages'))
+    .addSubcommand(s => s.setName('self').setDescription('Toggle allowing self-starring')),
 
-const commands = [
-  {
-    name: 'setstarboard',
-    description: 'Set the starboard channel',
-    usage: '!setstarboard <channel>',
-    aliases: ['starboard'],
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      await db.set(`starboard_channel_${message.guild.id}`, ch.id);
-      message.reply({ embeds: [successEmbed('Starboard Set', `Starboard channel set to ${ch}.`)] });
+  async execute(interaction) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
+      return interaction.reply({ embeds: [errorEmbed('Admin only.')], ephemeral: true });
+
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
+
+    if (sub === 'setup') {
+      const ch = interaction.options.getChannel('channel');
+      const threshold = interaction.options.getInteger('threshold') || 3;
+      await db.set(`starboard_channel_${guildId}`, ch.id);
+      await db.set(`starboard_threshold_${guildId}`, threshold);
+      return interaction.reply({ embeds: [successEmbed('⭐ Starboard Setup', `Starboard set to ${ch} with **${threshold}** ⭐ threshold.`)] });
     }
-  },
-  {
-    name: 'starboardmin',
-    description: 'Set minimum stars to reach the starboard',
-    usage: '!starboardmin <number>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const min = parseInt(args[0]);
-      if (isNaN(min) || min < 1) return message.reply({ embeds: [errorEmbed('Please provide a valid number.')] });
-      await db.set(`starboard_min_${message.guild.id}`, min);
-      message.reply({ embeds: [successEmbed('Starboard Minimum', `Messages need **${min}** ⭐ to reach the starboard.`)] });
+    if (sub === 'disable') {
+      await db.delete(`starboard_channel_${guildId}`);
+      return interaction.reply({ embeds: [successEmbed('Starboard Disabled', 'Starboard has been disabled.')] });
     }
-  },
-  {
-    name: 'starboardemoji',
-    description: 'Set the starboard emoji',
-    usage: '!starboardemoji <emoji>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const emoji = args[0];
-      if (!emoji) return message.reply({ embeds: [errorEmbed('Please provide an emoji.')] });
-      await db.set(`starboard_emoji_${message.guild.id}`, emoji);
-      message.reply({ embeds: [successEmbed('Starboard Emoji', `Starboard emoji set to ${emoji}.`)] });
+    if (sub === 'settings') {
+      const ch = await db.get(`starboard_channel_${guildId}`);
+      const threshold = (await db.get(`starboard_threshold_${guildId}`)) || 3;
+      const emoji = (await db.get(`starboard_emoji_${guildId}`)) || '⭐';
+      const selfStar = (await db.get(`starboard_self_${guildId}`)) || false;
+      return interaction.reply({ embeds: [infoEmbed('⭐ Starboard Settings').addFields(
+        { name: 'Channel', value: ch ? `<#${ch}>` : 'Not set', inline: true },
+        { name: 'Threshold', value: String(threshold), inline: true },
+        { name: 'Emoji', value: emoji, inline: true },
+        { name: 'Self-Star', value: selfStar ? 'Allowed' : 'Disabled', inline: true }
+      )] });
     }
-  },
-  {
-    name: 'starboardblacklist',
-    description: 'Blacklist a channel from the starboard',
-    usage: '!starboardblacklist <channel>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      const list = (await db.get(`starboard_blacklist_${message.guild.id}`)) || [];
-      if (!list.includes(ch.id)) list.push(ch.id);
-      await db.set(`starboard_blacklist_${message.guild.id}`, list);
-      message.reply({ embeds: [successEmbed('Starboard Blacklisted', `${ch} is now blacklisted from the starboard.`)] });
+    if (sub === 'setthreshold') {
+      const amount = interaction.options.getInteger('amount');
+      await db.set(`starboard_threshold_${guildId}`, amount);
+      return interaction.reply({ embeds: [successEmbed('Threshold Updated', `Starboard threshold set to **${amount}** ⭐.`)] });
     }
-  },
-  {
-    name: 'starboardwhitelist',
-    description: 'Remove a channel from the starboard blacklist',
-    usage: '!starboardwhitelist <channel>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      let list = (await db.get(`starboard_blacklist_${message.guild.id}`)) || [];
-      list = list.filter(id => id !== ch.id);
-      await db.set(`starboard_blacklist_${message.guild.id}`, list);
-      message.reply({ embeds: [successEmbed('Starboard Whitelisted', `${ch} is no longer blacklisted.`)] });
+    if (sub === 'setemoji') {
+      const emoji = interaction.options.getString('emoji');
+      await db.set(`starboard_emoji_${guildId}`, emoji);
+      return interaction.reply({ embeds: [successEmbed('Emoji Updated', `Starboard emoji set to ${emoji}.`)] });
     }
-  },
-  {
-    name: 'starboardstats',
-    description: 'View starboard statistics',
-    usage: '!starboardstats',
-    async execute(message, args) {
-      const count = (await db.get(`starboard_count_${message.guild.id}`)) || 0;
-      const chId = await db.get(`starboard_channel_${message.guild.id}`);
-      const min = (await db.get(`starboard_min_${message.guild.id}`)) || 3;
-      const emoji = (await db.get(`starboard_emoji_${message.guild.id}`)) || '⭐';
-      message.reply({ embeds: [infoEmbed('⭐ Starboard Stats')
-        .addFields(
-          { name: 'Channel', value: chId ? `<#${chId}>` : 'Not set', inline: true },
-          { name: 'Min Stars', value: String(min), inline: true },
-          { name: 'Emoji', value: emoji, inline: true },
-          { name: 'Total Starred', value: String(count), inline: true }
-        )
-      ] });
+    if (sub === 'ignore') {
+      const ch = interaction.options.getChannel('channel');
+      const list = (await db.get(`starboard_ignore_${guildId}`)) || [];
+      const idx = list.indexOf(ch.id);
+      if (idx !== -1) { list.splice(idx, 1); await db.set(`starboard_ignore_${guildId}`, list); return interaction.reply({ embeds: [successEmbed('Unignored', `${ch} is no longer ignored.`)] }); }
+      list.push(ch.id);
+      await db.set(`starboard_ignore_${guildId}`, list);
+      return interaction.reply({ embeds: [successEmbed('Ignored', `${ch} added to starboard ignore list.`)] });
     }
-  },
-  {
-    name: 'togglestarboard',
-    description: 'Enable or disable the starboard',
-    usage: '!togglestarboard',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const key = `starboard_enabled_${message.guild.id}`;
-      const current = (await db.get(key)) !== false;
-      await db.set(key, !current);
-      message.reply({ embeds: [successEmbed('Starboard', `Starboard ${!current ? 'enabled' : 'disabled'}.`)] });
+    if (sub === 'top') {
+      const allKeys = await db.all();
+      const stars = allKeys.filter(k => k.id.startsWith(`starboard_msg_${guildId}_`)).sort((a, b) => b.value.stars - a.value.stars).slice(0, 5);
+      if (!stars.length) return interaction.reply({ embeds: [infoEmbed('⭐ Top Stars', 'No starred messages yet.')] });
+      const list = stars.map((k, i) => `**${i + 1}.** ⭐ ${k.value.stars} — [Jump](${k.value.url || '#'})`).join('\n');
+      return interaction.reply({ embeds: [infoEmbed('⭐ Top Starred Messages', list)] });
     }
-  },
-  {
-    name: 'starboardsettings',
-    description: 'View all starboard settings',
-    usage: '!starboardsettings',
-    async execute(message, args) {
-      const chId = await db.get(`starboard_channel_${message.guild.id}`);
-      const min = (await db.get(`starboard_min_${message.guild.id}`)) || 3;
-      const emoji = (await db.get(`starboard_emoji_${message.guild.id}`)) || '⭐';
-      const enabled = (await db.get(`starboard_enabled_${message.guild.id}`)) !== false;
-      const bl = (await db.get(`starboard_blacklist_${message.guild.id}`)) || [];
-      message.reply({ embeds: [infoEmbed('⭐ Starboard Settings')
-        .addFields(
-          { name: 'Enabled', value: enabled ? 'Yes' : 'No', inline: true },
-          { name: 'Channel', value: chId ? `<#${chId}>` : 'Not set', inline: true },
-          { name: 'Min Stars', value: String(min), inline: true },
-          { name: 'Emoji', value: emoji, inline: true },
-          { name: 'Blacklisted Channels', value: bl.map(id => `<#${id}>`).join(', ') || 'None', inline: false }
-        )
-      ] });
+    if (sub === 'self') {
+      const current = (await db.get(`starboard_self_${guildId}`)) || false;
+      await db.set(`starboard_self_${guildId}`, !current);
+      return interaction.reply({ embeds: [successEmbed('Self-Star', `Self-starring ${!current ? 'allowed' : 'disabled'}.`)] });
     }
   }
-];
-
-module.exports = { category, commands };
+};

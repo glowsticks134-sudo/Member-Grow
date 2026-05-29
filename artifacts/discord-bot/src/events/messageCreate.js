@@ -1,12 +1,12 @@
 const db = require('../utils/database');
-const { errorEmbed } = require('../utils/embed');
+const { EmbedBuilder } = require('discord.js');
+const { CREDITS, BRAND_COLOR } = require('../utils/embed');
 const { randomInt } = require('../utils/helpers');
 
 const spamMap = new Map();
-const afkMap = new Map();
 
 async function handleXP(message, client) {
-  if (message.author.bot) return;
+  if (message.author.bot || !message.guild) return;
   const guildId = message.guild.id;
   const userId = message.author.id;
 
@@ -14,7 +14,7 @@ async function handleXP(message, client) {
   if (noxpChannels.includes(message.channel.id)) return;
 
   const noxpRoleId = await db.get(`noxprole_${guildId}`);
-  if (noxpRoleId && message.member.roles.cache.has(noxpRoleId)) return;
+  if (noxpRoleId && message.member?.roles.cache.has(noxpRoleId)) return;
 
   const xpCooldownKey = `xpcooldown_${guildId}_${userId}`;
   const lastXp = await db.get(xpCooldownKey);
@@ -36,152 +36,141 @@ async function handleXP(message, client) {
     data.xp -= xpNeeded;
     data.level++;
 
-    const enabled = (await db.get(`levelup_enabled_${guildId}`)) !== false;
-    if (enabled) {
-      const levelChId = await db.get(`levelchannel_${guildId}`);
-      const levelCh = levelChId ? client.channels.cache.get(levelChId) : message.channel;
-      if (levelCh) {
-        const customMsg = await db.get(`levelupmsg_${guildId}`);
-        const text = customMsg
-          ? customMsg.replace('{user}', message.author.toString()).replace('{level}', data.level)
-          : `🎉 ${message.author} leveled up to **Level ${data.level}**!`;
-        levelCh.send(text);
+    const msgEnabled = await db.get(`levelup_msg_${guildId}`);
+    if (msgEnabled !== false) {
+      const chId = await db.get(`levelup_channel_${guildId}`);
+      const targetCh = chId ? message.guild.channels.cache.get(chId) : message.channel;
+      if (targetCh) {
+        const embed = new EmbedBuilder()
+          .setColor(BRAND_COLOR)
+          .setTitle('🎉 Level Up!')
+          .setDescription(`${message.author} reached **Level ${data.level}**!`)
+          .setThumbnail(message.author.displayAvatarURL())
+          .setFooter({ text: CREDITS });
+        targetCh.send({ embeds: [embed] }).catch(() => null);
       }
     }
 
-    const levelRoles = (await db.get(`levelroles_${guildId}`)) || {};
-    if (levelRoles[data.level]) {
-      const role = message.guild.roles.cache.get(levelRoles[data.level]);
-      if (role) message.member.roles.add(role).catch(() => null);
+    const rewards = (await db.get(`levelroles_${guildId}`)) || {};
+    const roleId = rewards[data.level];
+    if (roleId) {
+      message.member.roles.add(roleId).catch(() => null);
     }
   }
 
   await db.set(levelKey, data);
 }
 
-async function handleAutoMod(message, client) {
-  if (message.author.bot) return;
-  if (message.member.permissions.has(8n)) return;
+async function handleAFK(message) {
+  if (message.author.bot || !message.guild) return;
+  const guildId = message.guild.id;
+  const userId = message.author.id;
 
-  const settings = (await db.get(`automod_${message.guild.id}`)) || {};
-  const exempt = (await db.get(`automod_exempt_${message.guild.id}`)) || [];
-  if (message.member.roles.cache.some(r => exempt.includes(r.id))) return;
-
-  const logChId = await db.get(`automodlog_${message.guild.id}`);
-
-  async function deleteAndWarn(reason) {
-    await message.delete().catch(() => null);
-    const reply = await message.channel.send({ content: `${message.author}, ${reason}`, embeds: [] }).catch(() => null);
-    if (reply) setTimeout(() => reply.delete().catch(() => null), 5000);
-    if (logChId) {
-      const logCh = client.channels.cache.get(logChId);
-      if (logCh) logCh.send(`🛡️ **AutoMod** | ${message.author.tag} in ${message.channel} — *${reason}*`);
-    }
-    const stats = (await db.get(`automod_stats_${message.guild.id}`)) || { deleted: 0, warned: 0, muted: 0 };
-    stats.deleted++;
-    await db.set(`automod_stats_${message.guild.id}`, stats);
+  const afkData = await db.get(`afk_${guildId}_${userId}`);
+  if (afkData) {
+    await db.delete(`afk_${guildId}_${userId}`);
+    message.reply({ content: `Welcome back, ${message.author}! AFK removed.` }).then(m => setTimeout(() => m.delete().catch(() => null), 5000)).catch(() => null);
   }
 
-  if (settings.antilink && /https?:\/\//i.test(message.content)) {
-    return deleteAndWarn('Links are not allowed here!');
+  const mentions = message.mentions.users;
+  for (const [, user] of mentions) {
+    const targetAfk = await db.get(`afk_${guildId}_${user.id}`);
+    if (targetAfk) {
+      const elapsed = Math.floor((Date.now() - targetAfk.time) / 60000);
+      message.reply({ content: `${user.username} is AFK: **${targetAfk.reason}** (${elapsed}m ago)` }).then(m => setTimeout(() => m.delete().catch(() => null), 5000)).catch(() => null);
+    }
+  }
+}
+
+async function handleAutoMod(message) {
+  if (message.author.bot || !message.guild || !message.member) return;
+  if (message.member.permissions.has(8n)) return;
+  const guildId = message.guild.id;
+
+  const whitelist = (await db.get(`automod_whitelist_${guildId}`)) || [];
+  if (whitelist.includes(message.channel.id)) return;
+  const roleWhitelist = (await db.get(`automod_whitelist_roles_${guildId}`)) || [];
+  if (roleWhitelist.some(r => message.member.roles.cache.has(r))) return;
+
+  const settings = (await db.get(`automod_${guildId}`)) || {};
+  const action = settings.action || 'delete';
+
+  async function punish(reason) {
+    if (action === 'delete' || action === 'warn' || action === 'mute') {
+      await message.delete().catch(() => null);
+    }
+    if (action === 'warn') {
+      const key = `warnings_${guildId}_${message.author.id}`;
+      const warns = (await db.get(key)) || [];
+      warns.push({ reason, mod: 'AutoMod', date: Date.now() });
+      await db.set(key, warns);
+    }
+    if (action === 'mute') {
+      await message.member.timeout(60000, reason).catch(() => null);
+    }
+    message.channel.send({ content: `${message.author} — ${reason}` }).then(m => setTimeout(() => m.delete().catch(() => null), 4000)).catch(() => null);
+  }
+
+  if (settings.antilink && /https?:\/\/|discord\.gg\//i.test(message.content)) {
+    return punish('No links allowed!');
   }
 
   if (settings.badwords) {
-    const badwords = (await db.get(`badwords_${message.guild.id}`)) || [];
-    if (badwords.some(w => message.content.toLowerCase().includes(w))) {
-      return deleteAndWarn('Your message contained a prohibited word.');
-    }
+    const badwords = (await db.get(`badwords_${guildId}`)) || [];
+    const lower = message.content.toLowerCase();
+    if (badwords.some(w => lower.includes(w))) return punish('Message contained a filtered word.');
   }
 
   if (settings.anticaps) {
+    const threshold = settings.capsThreshold || 70;
     const letters = message.content.replace(/[^a-zA-Z]/g, '');
-    if (letters.length > 10) {
-      const caps = letters.replace(/[^A-Z]/g, '').length;
-      if (caps / letters.length > 0.7) return deleteAndWarn('Please avoid using excessive caps!');
+    if (letters.length > 8) {
+      const upper = letters.replace(/[^A-Z]/g, '').length;
+      if ((upper / letters.length) * 100 >= threshold) return punish('Too many capital letters!');
     }
   }
 
   if (settings.antiemoji) {
-    const emojiCount = (message.content.match(/[\p{Emoji}]/gu) || []).length;
-    if (emojiCount > 10) return deleteAndWarn('Please avoid excessive emoji spam!');
-  }
-
-  if (settings.antimentions) {
-    if (message.mentions.users.size > 5) return deleteAndWarn('Please avoid mention spamming!');
+    const emojiRegex = /(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g;
+    const emojiCount = (message.content.match(emojiRegex) || []).length;
+    if (emojiCount >= 7) return punish('Too many emojis!');
   }
 
   if (settings.antispam) {
+    const threshold = settings.spamThreshold || 5;
     const key = `${message.guild.id}_${message.author.id}`;
-    const timestamps = spamMap.get(key) || [];
     const now = Date.now();
-    const recent = timestamps.filter(t => now - t < 5000);
-    recent.push(now);
-    spamMap.set(key, recent);
-    if (recent.length >= 5) {
+    if (!spamMap.has(key)) spamMap.set(key, []);
+    const timestamps = spamMap.get(key).filter(t => now - t < 5000);
+    timestamps.push(now);
+    spamMap.set(key, timestamps);
+    if (timestamps.length >= threshold) {
       spamMap.delete(key);
-      return deleteAndWarn('You are sending messages too fast!');
+      return punish('Stop spamming!');
     }
   }
-}
 
-async function handleAFKCheck(message, client) {
-  if (message.author.bot) return;
-  const afkKey = `afk_${message.guild.id}_${message.author.id}`;
-  const afk = await db.get(afkKey);
-  if (afk) {
-    await db.delete(afkKey);
-    const reply = await message.reply({ content: `👋 Welcome back, ${message.author}! Your AFK status has been removed.` });
-    setTimeout(() => reply.delete().catch(() => null), 5000);
-  }
-
-  for (const user of message.mentions.users.values()) {
-    if (user.bot) continue;
-    const mentionAfk = await db.get(`afk_${message.guild.id}_${user.id}`);
-    if (mentionAfk) {
-      const reply = await message.reply({ content: `💤 **${user.username}** is AFK: ${mentionAfk.reason} — <t:${Math.floor(mentionAfk.time / 1000)}:R>` });
-      setTimeout(() => reply.delete().catch(() => null), 8000);
-    }
+  if (settings.antimentions) {
+    const mentionCount = (message.mentions.users.size || 0) + (message.mentions.roles.size || 0);
+    if (mentionCount >= 5) return punish('Too many mentions!');
   }
 }
 
-async function handleVoteChannels(message, client) {
-  if (message.author.bot) return;
-  const voteChannels = (await db.get(`votechannels_${message.guild.id}`)) || [];
-  if (voteChannels.includes(message.channel.id)) {
-    await message.react('✅').catch(() => null);
-    await message.react('❌').catch(() => null);
+async function handleSnipe(message, client) {
+  if (!client.snipes) client.snipes = new Map();
+  if (!message.author.bot) {
+    client.snipes.set(message.channel.id, { content: message.content, author: message.author, createdAt: message.createdAt });
   }
 }
-
-async function handleStarboard(message, client) {}
 
 module.exports = {
   name: 'messageCreate',
   async execute(client, message) {
-    if (message.author.bot || !message.guild) return;
-
-    const blacklist = (await db.get('bot_blacklist')) || [];
-    if (blacklist.includes(message.author.id)) return;
-
-    handleXP(message, client).catch(() => null);
-    handleAutoMod(message, client).catch(() => null);
-    handleAFKCheck(message, client).catch(() => null);
-    handleVoteChannels(message, client).catch(() => null);
-
-    const prefix = (await db.get(`prefix_${message.guild.id}`)) || '!';
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/\s+/);
-    const commandName = args.shift().toLowerCase();
-
-    const command = client.commands.get(commandName) || client.commands.get(client.aliases.get(commandName));
-    if (!command) return;
-
-    try {
-      await command.execute(message, args, client);
-    } catch (err) {
-      console.error(`[CMD ERROR] ${commandName}:`, err);
-      message.reply({ embeds: [errorEmbed(`An error occurred while running this command.\n\`${err.message}\``)] }).catch(() => null);
-    }
+    if (!message.guild) return;
+    await Promise.all([
+      handleXP(message, client),
+      handleAFK(message),
+      handleAutoMod(message)
+    ]);
   }
 };

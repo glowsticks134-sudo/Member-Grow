@@ -1,102 +1,92 @@
+const { SlashCommandBuilder } = require('discord.js');
 const { successEmbed, errorEmbed, infoEmbed } = require('../utils/embed');
 const { parseDuration, formatDuration } = require('../utils/helpers');
 const db = require('../utils/database');
 
-const category = 'Reminders';
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('reminder')
+    .setDescription('Reminder commands')
+    .addSubcommand(s => s.setName('set').setDescription('Set a reminder').addStringOption(o => o.setName('time').setDescription('When e.g. 10m, 1h, 2d').setRequired(true)).addStringOption(o => o.setName('message').setDescription('Reminder message').setRequired(true)))
+    .addSubcommand(s => s.setName('list').setDescription('View your reminders'))
+    .addSubcommand(s => s.setName('delete').setDescription('Delete a reminder').addIntegerOption(o => o.setName('id').setDescription('Reminder ID').setRequired(true).setMinValue(1)))
+    .addSubcommand(s => s.setName('clear').setDescription('Clear all your reminders'))
+    .addSubcommand(s => s.setName('snooze').setDescription('Snooze a reminder').addIntegerOption(o => o.setName('id').setDescription('Reminder ID').setRequired(true)).addStringOption(o => o.setName('time').setDescription('Snooze duration e.g. 10m').setRequired(true)))
+    .addSubcommand(s => s.setName('dm').setDescription('Toggle DM reminders on/off')),
 
-const commands = [
-  {
-    name: 'remind',
-    description: 'Set a reminder',
-    usage: '!remind <duration> <message>',
-    aliases: ['reminder', 'remindme'],
-    async execute(message, args, client) {
-      const duration = parseDuration(args[0]);
-      if (!duration) return message.reply({ embeds: [errorEmbed('Invalid duration. Ex: `10m`, `1h`, `2d`')] });
-      if (duration < 10000) return message.reply({ embeds: [errorEmbed('Duration must be at least 10 seconds.')] });
-      if (duration > 2592000000) return message.reply({ embeds: [errorEmbed('Duration cannot exceed 30 days.')] });
-      const text = args.slice(1).join(' ');
-      if (!text) return message.reply({ embeds: [errorEmbed('Please provide a reminder message.')] });
-      const remindAt = Date.now() + duration;
-      const key = `reminders_${message.author.id}`;
+  async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
+    const userId = interaction.user.id;
+    const key = `reminders_${userId}`;
+
+    if (sub === 'set') {
+      const timeStr = interaction.options.getString('time');
+      const msg = interaction.options.getString('message');
+      const duration = parseDuration(timeStr);
+      if (!duration) return interaction.reply({ embeds: [errorEmbed('Invalid time format. Use e.g. `10m`, `1h`, `2d`.')], ephemeral: true });
       const reminders = (await db.get(key)) || [];
-      const id = Date.now().toString(36);
-      reminders.push({ id, text, remindAt, channelId: message.channel.id, guildId: message.guild.id });
+      const id = reminders.length + 1;
+      const fireAt = Date.now() + duration;
+      reminders.push({ id, message: msg, fireAt, channelId: interaction.channel.id, guildId: interaction.guild.id });
       await db.set(key, reminders);
-      message.reply({ embeds: [successEmbed('⏰ Reminder Set', `I'll remind you in **${formatDuration(duration)}**.\n**Message:** ${text}`)] });
       setTimeout(async () => {
         try {
-          const ch = client.channels.cache.get(message.channel.id);
-          if (ch) ch.send({ content: `⏰ <@${message.author.id}>`, embeds: [infoEmbed('⏰ Reminder!', text)] });
-        } catch {}
-        const updated = (await db.get(key)) || [];
-        const filtered = updated.filter(r => r.id !== id);
-        await db.set(key, filtered);
+          const dmToggle = await db.get(`reminder_dm_${userId}`);
+          if (dmToggle) {
+            await interaction.user.send({ embeds: [infoEmbed('⏰ Reminder!', msg)] });
+          } else {
+            const ch = interaction.guild.channels.cache.get(interaction.channel.id);
+            if (ch) await ch.send({ content: `<@${userId}>`, embeds: [infoEmbed('⏰ Reminder!', msg)] });
+          }
+          const current = (await db.get(key)) || [];
+          const idx = current.findIndex(r => r.id === id && r.fireAt === fireAt);
+          if (idx !== -1) { current.splice(idx, 1); await db.set(key, current); }
+        } catch (err) {
+          console.error('[REMINDER]', err);
+        }
       }, duration);
+      return interaction.reply({ embeds: [successEmbed('⏰ Reminder Set', `I'll remind you about **${msg}** in **${formatDuration(duration)}**.`)] });
     }
-  },
-  {
-    name: 'reminders',
-    description: 'List your active reminders',
-    usage: '!reminders',
-    aliases: ['listreminders'],
-    async execute(message, args) {
-      const key = `reminders_${message.author.id}`;
+
+    if (sub === 'list') {
       const reminders = (await db.get(key)) || [];
-      if (!reminders.length) return message.reply({ embeds: [infoEmbed('⏰ Reminders', 'You have no active reminders.')] });
-      const list = reminders.map((r, i) => `**${i + 1}.** ${r.text} — <t:${Math.floor(r.remindAt / 1000)}:R>`).join('\n');
-      message.reply({ embeds: [infoEmbed('⏰ Your Reminders', list)] });
+      if (!reminders.length) return interaction.reply({ embeds: [infoEmbed('Reminders', 'You have no active reminders.')], ephemeral: true });
+      const list = reminders.map(r => `**#${r.id}** — ${r.message} — <t:${Math.floor(r.fireAt / 1000)}:R>`).join('\n');
+      return interaction.reply({ embeds: [infoEmbed('⏰ Your Reminders', list)], ephemeral: true });
     }
-  },
-  {
-    name: 'delreminder',
-    description: 'Delete a reminder by index',
-    usage: '!delreminder <index>',
-    aliases: ['cancelreminder'],
-    async execute(message, args) {
-      const idx = parseInt(args[0]) - 1;
-      if (isNaN(idx) || idx < 0) return message.reply({ embeds: [errorEmbed('Invalid index.')] });
-      const key = `reminders_${message.author.id}`;
+
+    if (sub === 'delete') {
+      const id = interaction.options.getInteger('id');
       const reminders = (await db.get(key)) || [];
-      if (idx >= reminders.length) return message.reply({ embeds: [errorEmbed('No reminder at that index.')] });
-      const removed = reminders.splice(idx, 1)[0];
+      const idx = reminders.findIndex(r => r.id === id);
+      if (idx === -1) return interaction.reply({ embeds: [errorEmbed(`Reminder #${id} not found.`)], ephemeral: true });
+      reminders.splice(idx, 1);
       await db.set(key, reminders);
-      message.reply({ embeds: [successEmbed('Reminder Deleted', `Removed: **${removed.text}**`)] });
+      return interaction.reply({ embeds: [successEmbed('Reminder Deleted', `Reminder #${id} deleted.`)], ephemeral: true });
     }
-  },
-  {
-    name: 'clearreminders',
-    description: 'Clear all your reminders',
-    usage: '!clearreminders',
-    async execute(message, args) {
-      await db.delete(`reminders_${message.author.id}`);
-      message.reply({ embeds: [successEmbed('Reminders Cleared', 'All your reminders have been cleared.')] });
+
+    if (sub === 'clear') {
+      await db.delete(key);
+      return interaction.reply({ embeds: [successEmbed('Reminders Cleared', 'All your reminders have been deleted.')], ephemeral: true });
     }
-  },
-  {
-    name: 'remindhere',
-    description: 'Set a reminder that pings you in this channel',
-    usage: '!remindhere <duration> <message>',
-    async execute(message, args, client) {
-      const duration = parseDuration(args[0]);
-      if (!duration) return message.reply({ embeds: [errorEmbed('Invalid duration.')] });
-      const text = args.slice(1).join(' ') || 'No message set';
-      message.reply({ embeds: [successEmbed('⏰ Reminder Set', `Pinging you here in **${formatDuration(duration)}**.\n**Message:** ${text}`)] });
-      setTimeout(() => {
-        const ch = client.channels.cache.get(message.channel.id);
-        if (ch) ch.send({ content: `⏰ <@${message.author.id}>`, embeds: [infoEmbed('⏰ Reminder!', text)] });
-      }, duration);
+
+    if (sub === 'snooze') {
+      const id = interaction.options.getInteger('id');
+      const timeStr = interaction.options.getString('time');
+      const duration = parseDuration(timeStr);
+      if (!duration) return interaction.reply({ embeds: [errorEmbed('Invalid time format.')], ephemeral: true });
+      const reminders = (await db.get(key)) || [];
+      const r = reminders.find(r => r.id === id);
+      if (!r) return interaction.reply({ embeds: [errorEmbed(`Reminder #${id} not found.`)], ephemeral: true });
+      r.fireAt = Date.now() + duration;
+      await db.set(key, reminders);
+      return interaction.reply({ embeds: [successEmbed('Snoozed', `Reminder #${id} snoozed for **${formatDuration(duration)}**.`)], ephemeral: true });
     }
-  },
-  {
-    name: 'remindcount',
-    description: 'Check how many reminders you have',
-    usage: '!remindcount',
-    async execute(message, args) {
-      const reminders = (await db.get(`reminders_${message.author.id}`)) || [];
-      message.reply({ embeds: [infoEmbed('⏰ Reminder Count', `You have **${reminders.length}** active reminder(s).`)] });
+
+    if (sub === 'dm') {
+      const current = await db.get(`reminder_dm_${userId}`);
+      await db.set(`reminder_dm_${userId}`, !current);
+      return interaction.reply({ embeds: [successEmbed('DM Reminders', `DM reminders ${!current ? 'enabled' : 'disabled'}.`)], ephemeral: true });
     }
   }
-];
-
-module.exports = { category, commands };
+};

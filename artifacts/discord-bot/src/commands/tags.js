@@ -1,160 +1,121 @@
-const { successEmbed, errorEmbed, infoEmbed } = require('../utils/embed');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { successEmbed, errorEmbed, infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
 const db = require('../utils/database');
 
-const category = 'Tags';
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('tags')
+    .setDescription('Custom tags/text commands')
+    .addSubcommand(s => s.setName('create').setDescription('Create a tag').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)).addStringOption(o => o.setName('content').setDescription('Tag content').setRequired(true)))
+    .addSubcommand(s => s.setName('get').setDescription('Show a tag').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)))
+    .addSubcommand(s => s.setName('delete').setDescription('Delete a tag').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)))
+    .addSubcommand(s => s.setName('edit').setDescription('Edit a tag').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)).addStringOption(o => o.setName('content').setDescription('New content').setRequired(true)))
+    .addSubcommand(s => s.setName('list').setDescription('List all tags'))
+    .addSubcommand(s => s.setName('info').setDescription('Tag information').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)))
+    .addSubcommand(s => s.setName('search').setDescription('Search tags').addStringOption(o => o.setName('query').setDescription('Search query').setRequired(true)))
+    .addSubcommand(s => s.setName('transfer').setDescription('Transfer tag ownership').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)).addUserOption(o => o.setName('user').setDescription('New owner').setRequired(true)))
+    .addSubcommand(s => s.setName('claim').setDescription('Claim a tag if owner left').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true)))
+    .addSubcommand(s => s.setName('raw').setDescription('Show raw tag content').addStringOption(o => o.setName('name').setDescription('Tag name').setRequired(true))),
 
-const commands = [
-  {
-    name: 'tag',
-    description: 'Use a custom tag',
-    usage: '!tag <name>',
-    aliases: ['t'],
-    async execute(message, args) {
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      const key = `tag_${message.guild.id}_${args[0].toLowerCase()}`;
-      const tag = await db.get(key);
-      if (!tag) return message.reply({ embeds: [errorEmbed(`Tag \`${args[0]}\` not found. Use \`!tags\` to view all tags.`)] });
-      message.channel.send(tag.content);
+  async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
+
+    if (sub === 'create') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const content = interaction.options.getString('content');
+      const key = `tag_${guildId}_${name}`;
+      if (await db.get(key)) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` already exists.`)], ephemeral: true });
+      await db.set(key, { name, content, authorId: interaction.user.id, uses: 0, created: Date.now() });
+      return interaction.reply({ embeds: [successEmbed('Tag Created', `Tag \`${name}\` created.`)] });
     }
-  },
-  {
-    name: 'addtag',
-    description: 'Add a custom tag',
-    usage: '!addtag <name> <content>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n) && !message.member.permissions.has(BigInt(0x20))) return message.reply({ embeds: [errorEmbed('You need Manage Messages permission.')] });
-      const name = args[0]?.toLowerCase();
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      const content = args.slice(1).join(' ');
-      if (!content) return message.reply({ embeds: [errorEmbed('Please provide tag content.')] });
-      const key = `tag_${message.guild.id}_${name}`;
-      await db.set(key, { content, author: message.author.id, created: Date.now(), name });
-      const list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      if (!list.includes(name)) { list.push(name); await db.set(`taglist_${message.guild.id}`, list); }
-      message.reply({ embeds: [successEmbed('Tag Created', `Tag \`${name}\` has been created.`)] });
+
+    if (sub === 'get') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      tag.uses = (tag.uses || 0) + 1;
+      await db.set(`tag_${guildId}_${name}`, tag);
+      return interaction.reply({ content: tag.content });
     }
-  },
-  {
-    name: 'removetag',
-    description: 'Remove a custom tag',
-    usage: '!removetag <name>',
-    aliases: ['deltag'],
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const name = args[0]?.toLowerCase();
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      await db.delete(`tag_${message.guild.id}_${name}`);
-      let list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      list = list.filter(t => t !== name);
-      await db.set(`taglist_${message.guild.id}`, list);
-      message.reply({ embeds: [successEmbed('Tag Removed', `Tag \`${name}\` has been removed.`)] });
+
+    if (sub === 'delete') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      if (tag.authorId !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages))
+        return interaction.reply({ embeds: [errorEmbed('You can only delete your own tags.')], ephemeral: true });
+      await db.delete(`tag_${guildId}_${name}`);
+      return interaction.reply({ embeds: [successEmbed('Tag Deleted', `Tag \`${name}\` deleted.`)] });
     }
-  },
-  {
-    name: 'edittag',
-    description: 'Edit a tag\'s content',
-    usage: '!edittag <name> <content>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const name = args[0]?.toLowerCase();
-      const content = args.slice(1).join(' ');
-      if (!name || !content) return message.reply({ embeds: [errorEmbed('Usage: !edittag <name> <content>')] });
-      const key = `tag_${message.guild.id}_${name}`;
-      const tag = await db.get(key);
-      if (!tag) return message.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)] });
+
+    if (sub === 'edit') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const content = interaction.options.getString('content');
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      if (tag.authorId !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages))
+        return interaction.reply({ embeds: [errorEmbed('You can only edit your own tags.')], ephemeral: true });
       tag.content = content;
-      tag.edited = Date.now();
-      await db.set(key, tag);
-      message.reply({ embeds: [successEmbed('Tag Edited', `Tag \`${name}\` updated.`)] });
+      await db.set(`tag_${guildId}_${name}`, tag);
+      return interaction.reply({ embeds: [successEmbed('Tag Edited', `Tag \`${name}\` updated.`)] });
     }
-  },
-  {
-    name: 'tags',
-    description: 'List all server tags',
-    usage: '!tags',
-    aliases: ['taglist'],
-    async execute(message, args) {
-      const list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      if (!list.length) return message.reply({ embeds: [infoEmbed('📝 Tags', 'No tags found. Use `!addtag` to create one.')] });
-      message.reply({ embeds: [infoEmbed(`📝 Server Tags (${list.length})`, list.map(t => `\`${t}\``).join(', '))] });
+
+    if (sub === 'list') {
+      const allKeys = await db.all();
+      const tags = allKeys.filter(k => k.id.startsWith(`tag_${guildId}_`));
+      if (!tags.length) return interaction.reply({ embeds: [infoEmbed('Tags', 'No tags in this server.')] });
+      const list = tags.slice(0, 25).map(t => `\`${t.value.name}\``).join(', ');
+      return interaction.reply({ embeds: [infoEmbed(`🏷️ Tags (${tags.length})`, list)] });
     }
-  },
-  {
-    name: 'taginfo',
-    description: 'Get info about a tag',
-    usage: '!taginfo <name>',
-    async execute(message, args) {
-      const name = args[0]?.toLowerCase();
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      const tag = await db.get(`tag_${message.guild.id}_${name}`);
-      if (!tag) return message.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)] });
-      message.reply({ embeds: [infoEmbed(`📝 Tag: ${name}`)
-        .addFields(
-          { name: 'Author', value: `<@${tag.author}>`, inline: true },
-          { name: 'Created', value: `<t:${Math.floor(tag.created / 1000)}:R>`, inline: true },
-          { name: 'Content Preview', value: tag.content.slice(0, 100) + (tag.content.length > 100 ? '...' : ''), inline: false }
-        )
-      ] });
+
+    if (sub === 'info') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      return interaction.reply({ embeds: [infoEmbed(`🏷️ Tag: ${name}`).addFields(
+        { name: 'Owner', value: `<@${tag.authorId}>`, inline: true },
+        { name: 'Uses', value: String(tag.uses || 0), inline: true },
+        { name: 'Created', value: tag.created ? `<t:${Math.floor(tag.created / 1000)}:R>` : 'Unknown', inline: true }
+      )] });
     }
-  },
-  {
-    name: 'tagsearch',
-    description: 'Search for tags by name',
-    usage: '!tagsearch <query>',
-    async execute(message, args) {
-      const query = args.join(' ').toLowerCase();
-      if (!query) return message.reply({ embeds: [errorEmbed('Please provide a search query.')] });
-      const list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      const matches = list.filter(t => t.includes(query));
-      if (!matches.length) return message.reply({ embeds: [infoEmbed('🔍 Tag Search', `No tags found matching \`${query}\`.`)] });
-      message.reply({ embeds: [infoEmbed(`🔍 Tag Search Results (${matches.length})`, matches.map(t => `\`${t}\``).join(', '))] });
+
+    if (sub === 'search') {
+      const query = interaction.options.getString('query').toLowerCase();
+      const allKeys = await db.all();
+      const tags = allKeys.filter(k => k.id.startsWith(`tag_${guildId}_`) && k.value.name.includes(query));
+      if (!tags.length) return interaction.reply({ embeds: [infoEmbed('Search', `No tags matching \`${query}\`.`)] });
+      return interaction.reply({ embeds: [infoEmbed(`🔍 Search: "${query}"`, tags.slice(0, 15).map(t => `\`${t.value.name}\``).join(', '))] });
     }
-  },
-  {
-    name: 'rawtag',
-    description: 'View the raw content of a tag',
-    usage: '!rawtag <name>',
-    async execute(message, args) {
-      const name = args[0]?.toLowerCase();
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      const tag = await db.get(`tag_${message.guild.id}_${name}`);
-      if (!tag) return message.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)] });
-      message.reply({ embeds: [infoEmbed(`📝 Raw Tag: ${name}`, `\`\`\`\n${tag.content}\n\`\`\``)] });
+
+    if (sub === 'transfer') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const newOwner = interaction.options.getUser('user');
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      if (tag.authorId !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages))
+        return interaction.reply({ embeds: [errorEmbed('You can only transfer your own tags.')], ephemeral: true });
+      tag.authorId = newOwner.id;
+      await db.set(`tag_${guildId}_${name}`, tag);
+      return interaction.reply({ embeds: [successEmbed('Tag Transferred', `Tag \`${name}\` transferred to ${newOwner.tag}.`)] });
     }
-  },
-  {
-    name: 'clearalltags',
-    description: 'Delete all server tags (Admin)',
-    usage: '!clearalltags',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      for (const name of list) await db.delete(`tag_${message.guild.id}_${name}`);
-      await db.delete(`taglist_${message.guild.id}`);
-      message.reply({ embeds: [successEmbed('Tags Cleared', `Deleted **${list.length}** tags.`)] });
+
+    if (sub === 'claim') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      const owner = interaction.guild.members.cache.get(tag.authorId);
+      if (owner) return interaction.reply({ embeds: [errorEmbed('Tag owner is still in the server.')], ephemeral: true });
+      tag.authorId = interaction.user.id;
+      await db.set(`tag_${guildId}_${name}`, tag);
+      return interaction.reply({ embeds: [successEmbed('Tag Claimed', `You now own tag \`${name}\`.`)] });
     }
-  },
-  {
-    name: 'importtag',
-    description: 'Import a tag from another message (reply to it)',
-    usage: '!importtag <name>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const name = args[0]?.toLowerCase();
-      if (!name) return message.reply({ embeds: [errorEmbed('Please provide a tag name.')] });
-      const ref = message.reference?.messageId;
-      if (!ref) return message.reply({ embeds: [errorEmbed('Reply to a message to import its content as a tag.')] });
-      const refMsg = await message.channel.messages.fetch(ref).catch(() => null);
-      if (!refMsg) return message.reply({ embeds: [errorEmbed('Could not fetch the referenced message.')] });
-      const content = refMsg.content || refMsg.embeds[0]?.description || '';
-      if (!content) return message.reply({ embeds: [errorEmbed('No text content found in that message.')] });
-      const key = `tag_${message.guild.id}_${name}`;
-      await db.set(key, { content, author: message.author.id, created: Date.now(), name });
-      const list = (await db.get(`taglist_${message.guild.id}`)) || [];
-      if (!list.includes(name)) { list.push(name); await db.set(`taglist_${message.guild.id}`, list); }
-      message.reply({ embeds: [successEmbed('Tag Imported', `Tag \`${name}\` created from message.`)] });
+
+    if (sub === 'raw') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const tag = await db.get(`tag_${guildId}_${name}`);
+      if (!tag) return interaction.reply({ embeds: [errorEmbed(`Tag \`${name}\` not found.`)], ephemeral: true });
+      return interaction.reply({ embeds: [infoEmbed(`📝 Raw: ${name}`, `\`\`\`\n${tag.content}\n\`\`\``)] });
     }
   }
-];
-
-module.exports = { category, commands };
+};

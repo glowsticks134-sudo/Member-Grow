@@ -1,170 +1,101 @@
-const { EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { successEmbed, errorEmbed, infoEmbed, CREDITS, BRAND_COLOR } = require('../utils/embed');
-const { resolveRole, resolveChannel } = require('../utils/helpers');
 const db = require('../utils/database');
 
-const category = 'Reaction Roles';
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('rr')
+    .setDescription('Reaction roles')
+    .addSubcommand(s => s.setName('add').setDescription('Add a reaction role').addStringOption(o => o.setName('messageid').setDescription('Message ID').setRequired(true)).addStringOption(o => o.setName('emoji').setDescription('Emoji').setRequired(true)).addRoleOption(o => o.setName('role').setDescription('Role to assign').setRequired(true)))
+    .addSubcommand(s => s.setName('remove').setDescription('Remove a reaction role').addStringOption(o => o.setName('messageid').setDescription('Message ID').setRequired(true)).addStringOption(o => o.setName('emoji').setDescription('Emoji').setRequired(true)))
+    .addSubcommand(s => s.setName('list').setDescription('List all reaction roles'))
+    .addSubcommand(s => s.setName('clear').setDescription('Clear all reaction roles from a message').addStringOption(o => o.setName('messageid').setDescription('Message ID').setRequired(true)))
+    .addSubcommand(s => s.setName('create').setDescription('Create a reaction role panel').addStringOption(o => o.setName('title').setDescription('Panel title').setRequired(true)).addStringOption(o => o.setName('description').setDescription('Panel description').setRequired(true)).addChannelOption(o => o.setName('channel').setDescription('Channel').setRequired(true)))
+    .addSubcommand(s => s.setName('setmode').setDescription('Set assignment mode').addStringOption(o => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'Toggle (default)', value: 'toggle' }, { name: 'Add only', value: 'add' }, { name: 'Remove only', value: 'remove' }, { name: 'Single (exclusive)', value: 'single' })))
+    .addSubcommand(s => s.setName('limit').setDescription('Set max roles per user').addIntegerOption(o => o.setName('max').setDescription('Max roles (0 = unlimited)').setRequired(true).setMinValue(0)))
+    .addSubcommand(s => s.setName('required').setDescription('Set required role to use reaction roles').addRoleOption(o => o.setName('role').setDescription('Required role').setRequired(true)))
+    .addSubcommand(s => s.setName('reset').setDescription('Reset all reaction role settings')),
 
-const commands = [
-  {
-    name: 'rradd',
-    description: 'Add a reaction role to a message',
-    usage: '!rradd <messageID> <emoji> <role>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const [msgId, emoji, ...roleParts] = args;
-      if (!msgId || !emoji || !roleParts.length) return message.reply({ embeds: [errorEmbed('Usage: `!rradd <messageID> <emoji> <role>`')] });
-      const role = await resolveRole(message.guild, roleParts.join(' '));
-      if (!role) return message.reply({ embeds: [errorEmbed('Could not find that role.')] });
-      const msg = await message.channel.messages.fetch(msgId).catch(() => null);
-      if (!msg) return message.reply({ embeds: [errorEmbed('Could not find that message.')] });
-      await msg.react(emoji).catch(() => null);
-      const key = `rr_${message.guild.id}_${msgId}`;
-      const rrs = (await db.get(key)) || {};
-      rrs[emoji] = role.id;
-      await db.set(key, rrs);
-      message.reply({ embeds: [successEmbed('Reaction Role Added', `Reacting with ${emoji} on that message will give ${role}.`)] });
+  async execute(interaction) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles))
+      return interaction.reply({ embeds: [errorEmbed('You need Manage Roles permission.')], ephemeral: true });
+
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
+
+    if (sub === 'add') {
+      const msgId = interaction.options.getString('messageid');
+      const emoji = interaction.options.getString('emoji');
+      const role = interaction.options.getRole('role');
+      const key = `rr_${guildId}_${msgId}`;
+      const data = (await db.get(key)) || {};
+      data[emoji] = role.id;
+      await db.set(key, data);
+      const msg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+      if (msg) await msg.react(emoji).catch(() => null);
+      return interaction.reply({ embeds: [successEmbed('Reaction Role Added', `${emoji} → ${role} added to message \`${msgId}\`.`)] });
     }
-  },
-  {
-    name: 'rrremove',
-    description: 'Remove a reaction role from a message',
-    usage: '!rrremove <messageID> <emoji>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const [msgId, emoji] = args;
-      if (!msgId || !emoji) return message.reply({ embeds: [errorEmbed('Usage: `!rrremove <messageID> <emoji>`')] });
-      const key = `rr_${message.guild.id}_${msgId}`;
-      const rrs = (await db.get(key)) || {};
-      delete rrs[emoji];
-      await db.set(key, rrs);
-      message.reply({ embeds: [successEmbed('Reaction Role Removed', `Removed ${emoji} from reaction roles.`)] });
+
+    if (sub === 'remove') {
+      const msgId = interaction.options.getString('messageid');
+      const emoji = interaction.options.getString('emoji');
+      const key = `rr_${guildId}_${msgId}`;
+      const data = (await db.get(key)) || {};
+      delete data[emoji];
+      await db.set(key, data);
+      return interaction.reply({ embeds: [successEmbed('Reaction Role Removed', `${emoji} removed from message.`)] });
     }
-  },
-  {
-    name: 'rrlist',
-    description: 'List all reaction roles for a message',
-    usage: '!rrlist <messageID>',
-    async execute(message, args) {
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide a message ID.')] });
-      const key = `rr_${message.guild.id}_${args[0]}`;
-      const rrs = (await db.get(key)) || {};
-      const entries = Object.entries(rrs);
-      if (!entries.length) return message.reply({ embeds: [infoEmbed('Reaction Roles', 'No reaction roles for this message.')] });
-      const list = entries.map(([emoji, roleId]) => `${emoji} → <@&${roleId}>`).join('\n');
-      message.reply({ embeds: [infoEmbed('🎭 Reaction Roles', list)] });
+
+    if (sub === 'list') {
+      const allKeys = await db.all();
+      const rrs = allKeys.filter(k => k.id.startsWith(`rr_${guildId}_`));
+      if (!rrs.length) return interaction.reply({ embeds: [infoEmbed('Reaction Roles', 'No reaction roles set up.')] });
+      const list = rrs.slice(0, 10).map(k => {
+        const msgId = k.id.replace(`rr_${guildId}_`, '');
+        const entries = Object.entries(k.value).map(([e, r]) => `${e} → <@&${r}>`).join(', ');
+        return `**Msg \`${msgId}\`:** ${entries}`;
+      }).join('\n');
+      return interaction.reply({ embeds: [infoEmbed('🎭 Reaction Roles', list)] });
     }
-  },
-  {
-    name: 'rrcreate',
-    description: 'Create a reaction role embed',
-    usage: '!rrcreate <title> | <emoji> <role> | ...',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const full = args.join(' ');
-      const parts = full.split('|').map(p => p.trim()).filter(Boolean);
-      if (parts.length < 2) return message.reply({ embeds: [errorEmbed('Usage: `!rrcreate Title | emoji role | emoji role ...`')] });
-      const title = parts[0];
-      const pairs = parts.slice(1);
-      const fields = [];
-      const rrs = {};
-      for (const pair of pairs) {
-        const [emoji, ...roleParts] = pair.split(' ').filter(Boolean);
-        const role = await resolveRole(message.guild, roleParts.join(' '));
-        if (!role) continue;
-        fields.push({ name: emoji, value: `${role}`, inline: true });
-        rrs[emoji] = role.id;
-      }
-      const embed = new EmbedBuilder()
-        .setColor(BRAND_COLOR)
-        .setTitle(`🎭 ${title}`)
-        .setDescription('React below to get your roles!')
-        .addFields(fields)
-        .setFooter({ text: CREDITS });
-      const msg = await message.channel.send({ embeds: [embed] });
-      const key = `rr_${message.guild.id}_${msg.id}`;
-      await db.set(key, rrs);
-      for (const emoji of Object.keys(rrs)) await msg.react(emoji).catch(() => null);
-      await message.delete().catch(() => null);
+
+    if (sub === 'clear') {
+      const msgId = interaction.options.getString('messageid');
+      await db.delete(`rr_${guildId}_${msgId}`);
+      return interaction.reply({ embeds: [successEmbed('Cleared', `Reaction roles cleared from \`${msgId}\`.`)] });
     }
-  },
-  {
-    name: 'rrdelete',
-    description: 'Delete all reaction roles from a message',
-    usage: '!rrdelete <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide a message ID.')] });
-      await db.delete(`rr_${message.guild.id}_${args[0]}`);
-      message.reply({ embeds: [successEmbed('Reaction Roles Deleted', 'All reaction roles removed from that message.')] });
-    }
-  },
-  {
-    name: 'rrsetup',
-    description: 'Quick setup for reaction roles in a new embed',
-    usage: '!rrsetup',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      message.reply({ embeds: [infoEmbed('📝 Reaction Role Setup', 'Use `!rrcreate Title | emoji role | emoji role` to create a reaction role embed.')] });
-    }
-  },
-  {
-    name: 'rrunique',
-    description: 'Set a reaction role message to be unique (one role at a time)',
-    usage: '!rrunique <messageID>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      if (!args[0]) return message.reply({ embeds: [errorEmbed('Please provide a message ID.')] });
-      await db.set(`rr_unique_${message.guild.id}_${args[0]}`, true);
-      message.reply({ embeds: [successEmbed('Unique Mode', 'Users can only have one role from this message at a time.')] });
-    }
-  },
-  {
-    name: 'rrpanel',
-    description: 'View all reaction role messages in the server',
-    usage: '!rrpanel',
-    async execute(message, args) {
-      message.reply({ embeds: [infoEmbed('🎭 Reaction Role Panel', 'All reaction roles are managed per-message ID. Use `!rrlist <messageID>` to view them.')] });
-    }
-  },
-  {
-    name: 'rrverify',
-    description: 'Set a verification reaction role',
-    usage: '!rrverify <channel> <emoji> <role>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const ch = await resolveChannel(message.guild, args[0]);
-      if (!ch) return message.reply({ embeds: [errorEmbed('Could not find that channel.')] });
-      const emoji = args[1];
-      const role = await resolveRole(message.guild, args[2]);
-      if (!role) return message.reply({ embeds: [errorEmbed('Could not find that role.')] });
-      const embed = new EmbedBuilder()
-        .setColor(BRAND_COLOR)
-        .setTitle('✅ Verification')
-        .setDescription(`React with ${emoji} to get the ${role} role and access the server!`)
-        .setFooter({ text: CREDITS });
+
+    if (sub === 'create') {
+      const title = interaction.options.getString('title');
+      const description = interaction.options.getString('description');
+      const ch = interaction.options.getChannel('channel');
+      const embed = new EmbedBuilder().setColor(BRAND_COLOR).setTitle(title).setDescription(description).setFooter({ text: CREDITS }).setTimestamp();
       const msg = await ch.send({ embeds: [embed] });
-      await msg.react(emoji);
-      await db.set(`rr_${message.guild.id}_${msg.id}`, { [emoji]: role.id });
-      message.reply({ embeds: [successEmbed('Verification Set', `Verification panel created in ${ch}.`)] });
+      return interaction.reply({ embeds: [successEmbed('Panel Created', `Reaction role panel created in ${ch}!\nMessage ID: \`${msg.id}\`\nUse \`/rr add\` to add reaction roles.`)] });
     }
-  },
-  {
-    name: 'rredit',
-    description: 'Edit the title of a reaction role embed',
-    usage: '!rredit <messageID> <new title>',
-    async execute(message, args) {
-      if (!message.member.permissions.has(8n)) return message.reply({ embeds: [errorEmbed('Admin only.')] });
-      const msgId = args[0];
-      const title = args.slice(1).join(' ');
-      if (!msgId || !title) return message.reply({ embeds: [errorEmbed('Usage: `!rredit <messageID> <new title>`')] });
-      const msg = await message.channel.messages.fetch(msgId).catch(() => null);
-      if (!msg || !msg.embeds[0]) return message.reply({ embeds: [errorEmbed('Could not find that message.')] });
-      const oldEmbed = EmbedBuilder.from(msg.embeds[0]).setTitle(title);
-      await msg.edit({ embeds: [oldEmbed] });
-      message.reply({ embeds: [successEmbed('Embed Edited', 'Title updated.')] });
+
+    if (sub === 'setmode') {
+      const mode = interaction.options.getString('mode');
+      await db.set(`rr_mode_${guildId}`, mode);
+      return interaction.reply({ embeds: [successEmbed('Mode Set', `Reaction role mode set to **${mode}**.`)] });
+    }
+
+    if (sub === 'limit') {
+      const max = interaction.options.getInteger('max');
+      await db.set(`rr_limit_${guildId}`, max);
+      return interaction.reply({ embeds: [successEmbed('Role Limit', max === 0 ? 'No limit on reaction roles.' : `Users can have max **${max}** reaction roles.`)] });
+    }
+
+    if (sub === 'required') {
+      const role = interaction.options.getRole('role');
+      await db.set(`rr_required_${guildId}`, role.id);
+      return interaction.reply({ embeds: [successEmbed('Required Role', `${role} is now required to use reaction roles.`)] });
+    }
+
+    if (sub === 'reset') {
+      await db.delete(`rr_mode_${guildId}`);
+      await db.delete(`rr_limit_${guildId}`);
+      await db.delete(`rr_required_${guildId}`);
+      return interaction.reply({ embeds: [successEmbed('Reset', 'Reaction role settings reset.')] });
     }
   }
-];
-
-module.exports = { category, commands };
+};

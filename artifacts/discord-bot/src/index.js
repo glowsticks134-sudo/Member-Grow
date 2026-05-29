@@ -28,7 +28,6 @@ const client = new Client({
   ]
 });
 
-client.prefixCache = new Map();
 client.snipes = new Map();
 client.editSnipes = new Map();
 
