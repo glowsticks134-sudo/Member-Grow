@@ -1,0 +1,5 @@
+[phases.install]
+cmds = ["cd artifacts/discord-bot && npm install"]
+
+[start]
+cmd = "node artifacts/discord-bot/src/index.js"
