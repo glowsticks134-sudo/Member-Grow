@@ -1,5 +1,7 @@
 const { ActivityType } = require('discord.js');
 const { registerCommands } = require('../handlers/commandHandler');
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
   name: 'ready',
@@ -7,6 +9,14 @@ module.exports = {
   async execute(client) {
     console.log(`[BOT] Logged in as ${client.user.tag}`);
     console.log(`[BOT] Serving ${client.guilds.cache.size} server(s)`);
+
+    try {
+      const avatar = fs.readFileSync(path.join(__dirname, '../assets/avatar.jpeg'));
+      await client.user.setAvatar(avatar);
+      console.log('[BOT] Avatar set successfully');
+    } catch (err) {
+      console.log('[BOT] Could not set avatar (may already be set or rate limited):', err.message);
+    }
 
     const activities = [
       { name: 'Member Grow | /help', type: ActivityType.Watching },
