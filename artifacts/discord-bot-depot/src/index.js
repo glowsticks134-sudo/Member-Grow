@@ -6,7 +6,7 @@ const { loadEvents } = require('./handlers/eventHandler');
 const TOKEN = process.env.TOKEN_1;
 
 if (!TOKEN) {
-  console.error('[ERROR] TOKEN_1 (Member Vault) is not set in .env');
+  console.error('[ERROR] TOKEN_1 (Member Depot) is not set in .env');
   process.exit(1);
 }
 

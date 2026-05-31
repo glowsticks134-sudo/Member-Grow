@@ -22,7 +22,7 @@ args = "Member Grow Bot"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Member Vault Bot"
+args = "Member Depot Bot"
 
 [[workflows.workflow]]
 name = "Member Grow Bot"
@@ -36,12 +36,12 @@ args = "cd artifacts/discord-bot && node src/index.js"
 outputType = "console"
 
 [[workflows.workflow]]
-name = "Member Vault Bot"
+name = "Member Depot Bot"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/discord-bot-vault && node src/index.js"
+args = "cd artifacts/discord-bot-depot && node src/index.js"
 
 [workflows.workflow.metadata]
 outputType = "console"
