@@ -3,10 +3,10 @@ const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const { loadCommands } = require('./handlers/commandHandler');
 const { loadEvents } = require('./handlers/eventHandler');
 
-const TOKEN = process.env.TOKEN_2;
+const TOKEN = process.env.TOKEN_1;
 
 if (!TOKEN) {
-  console.error('[ERROR] TOKEN_2 (Member Grow) is not set in .env');
+  console.error('[ERROR] TOKEN_1 (Member Vault) is not set in .env');
   process.exit(1);
 }
 

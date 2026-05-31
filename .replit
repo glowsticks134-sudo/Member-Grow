@@ -18,15 +18,30 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Discord Bot"
+args = "Member Grow Bot"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Member Vault Bot"
 
 [[workflows.workflow]]
-name = "Discord Bot"
+name = "Member Grow Bot"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/discord-bot && node src/index.js"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Member Vault Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/discord-bot-vault && node src/index.js"
 
 [workflows.workflow.metadata]
 outputType = "console"
