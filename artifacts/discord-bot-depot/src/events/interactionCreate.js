@@ -9,6 +9,10 @@ module.exports = {
     if (interaction.isChatInputCommand()) {
       const command = client.slashCommands.get(interaction.commandName);
       if (!command) return;
+      const { isOwner } = require('../config');
+      if (command.ownerOnly && !isOwner(interaction.user.id)) {
+        return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+      }
       try {
         await command.execute(interaction, client);
       } catch (err) {

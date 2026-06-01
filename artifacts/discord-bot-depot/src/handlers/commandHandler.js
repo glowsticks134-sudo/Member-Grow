@@ -18,7 +18,7 @@ function loadCommands(client) {
 }
 
 async function registerCommands(client) {
-  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+  const rest = new REST().setToken(process.env.TOKEN_1);
   const commands = [...client.slashCommands.values()].map(c => c.data.toJSON());
 
   try {
