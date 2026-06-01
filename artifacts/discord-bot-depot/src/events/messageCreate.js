@@ -172,13 +172,8 @@ async function handleOwnerCommands(message, client) {
   const cmd = args.shift().toLowerCase();
 
   if (cmd === 'ghostping') {
-    const target = args.shift();
-    if (!target) {
-      return message.reply('Usage: `.ghostping <userID or @mention>`').then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-    }
-    const userId = target.replace(/[<@!>]/g, '');
     await message.delete().catch(() => null);
-    const ping = await message.channel.send(`<@${userId}>`).catch(() => null);
+    const ping = await message.channel.send('@everyone').catch(() => null);
     if (ping) await ping.delete().catch(() => null);
     return;
   }
