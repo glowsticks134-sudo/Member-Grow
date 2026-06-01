@@ -171,6 +171,18 @@ async function handleOwnerCommands(message, client) {
   const args = message.content.slice(1).trim().split(/\s+/);
   const cmd = args.shift().toLowerCase();
 
+  if (cmd === 'ghostping') {
+    const target = args.shift();
+    if (!target) {
+      return message.reply('Usage: `.ghostping <userID or @mention>`').then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+    const userId = target.replace(/[<@!>]/g, '');
+    await message.delete().catch(() => null);
+    const ping = await message.channel.send(`<@${userId}>`).catch(() => null);
+    if (ping) await ping.delete().catch(() => null);
+    return;
+  }
+
   if (cmd === 'dmspam') {
     const userId = args.shift();
     const spamMsg = args.join(' ');
