@@ -10,8 +10,13 @@ module.exports = {
       const command = client.slashCommands.get(interaction.commandName);
       if (!command) return;
       const { isOwner } = require('../config');
+      const db = require('../utils/database');
       if (command.ownerOnly && !isOwner(interaction.user.id)) {
         return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+      }
+      const botBan = await db.get(`botban_${interaction.user.id}`);
+      if (botBan) {
+        return interaction.reply({ content: `🚫 You are banned from using this bot.\nReason: ${botBan.reason}`, ephemeral: true });
       }
       try {
         await command.execute(interaction, client);
