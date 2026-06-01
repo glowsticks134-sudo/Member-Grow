@@ -1,5 +1,5 @@
 [phases.install]
-cmds = ["cd artifacts/discord-bot && npm install"]
+cmds = ["cd artifacts/discord-bot-depot && npm install"]
 
 [start]
-cmd = "node artifacts/discord-bot/src/index.js"
+cmd = "node artifacts/discord-bot-depot/src/index.js"
