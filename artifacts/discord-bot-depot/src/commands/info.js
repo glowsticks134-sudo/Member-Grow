@@ -21,7 +21,7 @@ module.exports = {
     .addSubcommand(s => s.setName('status').setDescription('Bot status page'))
     .addSubcommand(s => s.setName('social').setDescription('Bot social media links'))
     .addSubcommand(s => s.setName('commands').setDescription('Full command list'))
-    .addSubcommand(s => s.setName('about').setDescription('About Member Grow bot'))
+    .addSubcommand(s => s.setName('about').setDescription('About Member Depot bot'))
     .addSubcommand(s => s.setName('whois').setDescription('Who is Stichachu13?'))
     .addSubcommand(s => s.setName('setup').setDescription('Quick setup guide'))
     .addSubcommand(s => s.setName('permissions').setDescription('Required bot permissions'))
@@ -34,7 +34,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor(BRAND_COLOR)
         .setTitle('✨ Bot Credits')
-        .setDescription('This bot was created with ❤️ for the **Member Grow** server.')
+        .setDescription('This bot was created with ❤️ for the **Member Depot** server.')
         .setThumbnail(client.user.displayAvatarURL())
         .addFields(
           { name: 'Developer', value: '**Stichachu13**', inline: true },
@@ -50,11 +50,11 @@ module.exports = {
     }
 
     if (sub === 'developer') {
-      return interaction.reply({ embeds: [infoEmbed('👨‍💻 Developer', '**Stichachu13** built and maintains this bot.\n\nThis bot powers the **Member Grow** community with 300+ commands covering moderation, fun, leveling, giveaways, tickets, and more.\n\nThank you for using Member Grow Bot! ❤️')] });
+      return interaction.reply({ embeds: [infoEmbed('👨‍💻 Developer', '**Stichachu13** built and maintains this bot.\n\nThis bot powers the **Member Depot** community with 300+ commands covering moderation, fun, leveling, giveaways, tickets, and more.\n\nThank you for using Member Depot Bot! ❤️')] });
     }
 
     if (sub === 'version') {
-      return interaction.reply({ embeds: [infoEmbed('📦 Version', '**Member Grow Bot v2.0**\n\n✅ Now running on **Slash Commands** (converted from prefix)\n✅ discord.js v14\n✅ 18 command categories\n✅ Hosted on Railway')] });
+      return interaction.reply({ embeds: [infoEmbed('📦 Version', '**Member Depot Bot v2.0**\n\n✅ Now running on **Slash Commands** (converted from prefix)\n✅ discord.js v14\n✅ 18 command categories\n✅ Hosted on Railway')] });
     }
 
     if (sub === 'changelog') {
@@ -62,7 +62,7 @@ module.exports = {
     }
 
     if (sub === 'support') {
-      return interaction.reply({ embeds: [infoEmbed('💬 Support', 'Join the **Member Grow** server for support!\n\nContact **Stichachu13** directly for bot issues.')] });
+      return interaction.reply({ embeds: [infoEmbed('💬 Support', 'Join the **Member Depot** server for support!\n\nContact **Stichachu13** directly for bot issues.')] });
     }
 
     if (sub === 'privacy') {
@@ -94,11 +94,11 @@ module.exports = {
     }
 
     if (sub === 'about') {
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(BRAND_COLOR).setTitle('🤖 About Member Grow Bot').setThumbnail(client.user.displayAvatarURL()).setDescription('Member Grow Bot is a full-featured Discord bot designed for the **Member Grow** community.\n\nBuilt by **Stichachu13** with discord.js v14, featuring 300+ commands across 18 categories.').setFooter({ text: CREDITS }).setTimestamp()] });
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(BRAND_COLOR).setTitle('🤖 About Member Depot Bot').setThumbnail(client.user.displayAvatarURL()).setDescription('Member Depot Bot is a full-featured Discord bot designed for the **Member Depot** community.\n\nBuilt by **Stichachu13** with discord.js v14, featuring 300+ commands across 18 categories.').setFooter({ text: CREDITS }).setTimestamp()] });
     }
 
     if (sub === 'whois') {
-      return interaction.reply({ embeds: [infoEmbed('👤 Stichachu13', '**Stichachu13** is the developer and owner of this bot.\n\nBuilt Member Grow Bot from scratch with JavaScript and discord.js v14.\n\nFor support or feature requests, reach out directly!')] });
+      return interaction.reply({ embeds: [infoEmbed('👤 Stichachu13', '**Stichachu13** is the developer and owner of this bot.\n\nBuilt Member Depot Bot from scratch with JavaScript and discord.js v14.\n\nFor support or feature requests, reach out directly!')] });
     }
 
     if (sub === 'roadmap') {
@@ -106,6 +106,6 @@ module.exports = {
     }
 
     const defaults = { donate: '💝 Support', upvote: '⬆️ Upvote', review: '⭐ Review', botlist: '📋 Bot Lists', status: '🟢 Status', social: '📱 Social' };
-    if (defaults[sub]) return interaction.reply({ embeds: [infoEmbed(defaults[sub], `Thank you for using **Member Grow Bot**!\n\nContact **Stichachu13** for links and more info.`)] });
+    if (defaults[sub]) return interaction.reply({ embeds: [infoEmbed(defaults[sub], `Thank you for using **Member Depot Bot**!\n\nContact **Stichachu13** for links and more info.`)] });
   }
 };

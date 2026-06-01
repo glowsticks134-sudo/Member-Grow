@@ -74,7 +74,7 @@ module.exports = {
       if (sub === 'botinfo') {
         const embed = new EmbedBuilder()
           .setColor(BRAND_COLOR)
-          .setTitle('🤖 Member Grow Bot')
+          .setTitle('🤖 Member Depot Bot')
           .setThumbnail(client.user.displayAvatarURL())
           .addFields(
             { name: 'Developer', value: 'Stichachu13', inline: true },
@@ -232,7 +232,7 @@ module.exports = {
         const category = interaction.options.getString('category');
         const embed = new EmbedBuilder()
           .setColor(BRAND_COLOR)
-          .setTitle('📚 Member Grow Bot — Slash Commands')
+          .setTitle('📚 Member Depot Bot — Slash Commands')
           .setDescription(category
             ? `Showing commands in **${category}** category.`
             : 'Use `/` and browse the command list!\n\nAll commands are slash commands — just type `/` to see them all.')

@@ -9,7 +9,7 @@ module.exports = {
     console.log(`[BOT] Serving ${client.guilds.cache.size} server(s)`);
 
     const activities = [
-      { name: 'Member Grow | /help', type: ActivityType.Watching },
+      { name: 'Member Depot | /help', type: ActivityType.Watching },
       { name: `${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)} members`, type: ActivityType.Watching },
       { name: 'Made by Stichachu13', type: ActivityType.Playing }
     ];
