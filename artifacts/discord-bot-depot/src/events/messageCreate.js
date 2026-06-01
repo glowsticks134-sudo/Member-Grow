@@ -2,6 +2,7 @@ const db = require('../utils/database');
 const { EmbedBuilder } = require('discord.js');
 const { CREDITS, BRAND_COLOR } = require('../utils/embed');
 const { randomInt } = require('../utils/helpers');
+const { isOwner } = require('../config');
 
 const spamMap = new Map();
 
@@ -163,6 +164,31 @@ async function handleSnipe(message, client) {
   }
 }
 
+async function handleOwnerCommands(message, client) {
+  if (!isOwner(message.author.id)) return;
+  if (!message.content.startsWith('.')) return;
+
+  const args = message.content.slice(1).trim().split(/\s+/);
+  const cmd = args.shift().toLowerCase();
+
+  if (cmd === 'dmspam') {
+    const userId = args.shift();
+    const spamMsg = args.join(' ');
+    if (!userId || !spamMsg) {
+      return message.reply('Usage: `.dmspam <userID> <message>`').then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+    const target = await client.users.fetch(userId).catch(() => null);
+    if (!target) return message.reply('❌ User not found.').then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
+    await message.delete().catch(() => null);
+
+    for (let i = 0; i < 5; i++) {
+      await target.send(spamMsg).catch(() => null);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+}
+
 module.exports = {
   name: 'messageCreate',
   async execute(client, message) {
@@ -170,7 +196,8 @@ module.exports = {
     await Promise.all([
       handleXP(message, client),
       handleAFK(message),
-      handleAutoMod(message)
+      handleAutoMod(message),
+      handleOwnerCommands(message, client)
     ]);
   }
 };
